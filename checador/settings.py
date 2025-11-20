@@ -26,7 +26,7 @@ SECRET_KEY = 'django-insecure-%opi-6o8m6qzs5v00$43q5+*rddr(n%so2svodu*^hyk5srwu)
 DEBUG = True
 
 ALLOWED_HOSTS = [
-    '.oyster-app-afeyk.ondigitalocean.app/',
+    '.oyster-app-afeyk.ondigitalocean.app',
     '.digitaloceanspaces.com',
     'localhost',
     '127.0.0.1',
