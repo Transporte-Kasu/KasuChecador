@@ -55,7 +55,7 @@ def checkin_view_tablet(request):
             # Verificar si es empleado
             try:
                 empleado = Empleado.objects.get(qr_uuid=qr_code, activo=True)
-                return procesar_checkin_empleado(request, empleado)
+                return procesar_checkin_empleado(request, empleado, redirect_to='checkin_tablet')
             except Empleado.DoesNotExist:
                 pass
 
@@ -64,7 +64,7 @@ def checkin_view_tablet(request):
                 if qr_code.startswith('VISITANTE:'):
                     uuid_visitante = qr_code.replace('VISITANTE:', '')
                     visitante = Visitante.objects.get(qr_uuid=uuid_visitante)
-                    return procesar_checkin_visitante(request, visitante)
+                    return procesar_checkin_visitante(request, visitante, redirect_to='checkin_tablet')
             except Visitante.DoesNotExist:
                 pass
 
@@ -74,7 +74,7 @@ def checkin_view_tablet(request):
 
     return render(request, 'attendance/checkin_tablet.html', {'form': form})
 
-def procesar_checkin_empleado(request, empleado):
+def procesar_checkin_empleado(request, empleado, redirect_to='checkin'):
     """Procesa el check-in de un empleado"""
     hoy = timezone.now().date()
     ultima_asistencia = Asistencia.objects.filter(
@@ -109,9 +109,9 @@ def procesar_checkin_empleado(request, empleado):
         mensaje += f" (Retardo: {asistencia.minutos_retardo} min)"
 
     messages.success(request, mensaje)
-    return redirect('checkin')
+    return redirect(redirect_to)
 
-def procesar_checkin_visitante(request, visitante):
+def procesar_checkin_visitante(request, visitante, redirect_to='checkin'):
     """Procesa el check-in de un visitante"""
     # Verificar si ya tiene un registro abierto
     registro_abierto = RegistroVisita.objects.filter(
@@ -129,7 +129,7 @@ def procesar_checkin_visitante(request, visitante):
         RegistroVisita.objects.create(visitante=visitante)
         messages.success(request, f"Entrada registrada: {visitante.nombre} - Visita a {visitante.departamento_visita}")
 
-    return redirect('checkin')
+    return redirect(redirect_to)
 
 # Vista de formulario de visitantes (pública)
 class VisitanteCreateView(CreateView):
