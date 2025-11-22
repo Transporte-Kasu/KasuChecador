@@ -81,6 +81,140 @@ def enviar_email_visitante(visitante):
     email_depto.send(fail_silently=False)
 
 
+def generar_reporte_semanal():
+    """Genera y envía el reporte semanal todos los jueves"""
+    hoy = timezone.now().date()
+    
+    # Calcular el rango de la semana (lunes a jueves)
+    # Si hoy es jueves (weekday = 3), la semana va desde el lunes anterior hasta hoy
+    dias_desde_lunes = hoy.weekday()  # 0=lunes, 3=jueves
+    fecha_inicio = hoy - timedelta(days=dias_desde_lunes)
+    fecha_fin = hoy
+    
+    # Obtener configuración
+    config = ConfiguracionSistema.objects.first()
+    if not config:
+        return
+    
+    # Obtener datos por empleado
+    empleados = Empleado.objects.filter(activo=True)
+    
+    html_reporte = f"""
+    <html>
+    <head>
+        <style>
+            body {{ font-family: Arial, sans-serif; }}
+            table {{ border-collapse: collapse; width: 100%; margin: 20px 0; }}
+            th, td {{ border: 1px solid #ddd; padding: 10px; text-align: center; }}
+            th {{ background-color: #3b82f6; color: white; }}
+            tr:nth-child(even) {{ background-color: #f2f2f2; }}
+            .titulo {{ background-color: #1e40af; color: white; padding: 20px; text-align: center; }}
+            .resumen {{ background-color: #eff6ff; padding: 20px; border-radius: 8px; margin: 20px 0; }}
+            .alerta {{ background-color: #fef2f2; padding: 15px; border-left: 4px solid #ef4444; margin: 20px 0; }}
+        </style>
+    </head>
+    <body>
+        <div class="titulo">
+            <h1>Reporte Semanal de Asistencias</h1>
+            <p>{fecha_inicio.strftime('%d/%m/%Y')} - {fecha_fin.strftime('%d/%m/%Y')}</p>
+        </div>
+
+        <table>
+            <tr>
+                <th>Empleado</th>
+                <th>Código</th>
+                <th>Departamento</th>
+                <th>Días Asistidos</th>
+                <th>Retardos</th>
+                <th>Total Min. Retardo</th>
+                <th>Faltas</th>
+            </tr>
+    """
+    
+    # Calcular días laborales (lunes a viernes en el rango)
+    dias_laborales = 0
+    fecha_actual = fecha_inicio
+    while fecha_actual <= fecha_fin:
+        if fecha_actual.weekday() < 5:  # Lunes a viernes
+            dias_laborales += 1
+        fecha_actual += timedelta(days=1)
+    
+    # Recolectar empleados con retardos consecutivos
+    empleados_retardos_consecutivos = []
+    
+    for empleado in empleados:
+        asistencias = Asistencia.objects.filter(
+            empleado=empleado,
+            fecha__gte=fecha_inicio,
+            fecha__lte=fecha_fin,
+            tipo_movimiento=TipoMovimiento.ENTRADA
+        )
+        
+        dias_asistidos = asistencias.values('fecha').distinct().count()
+        retardos = asistencias.filter(retardo=True).count()
+        total_min_retardo = sum(asistencias.filter(retardo=True).values_list('minutos_retardo', flat=True))
+        faltas = dias_laborales - dias_asistidos
+        
+        html_reporte += f"""
+            <tr>
+                <td>{empleado.user.get_full_name()}</td>
+                <td>{empleado.codigo_empleado}</td>
+                <td>{empleado.departamento.nombre if empleado.departamento else 'N/A'}</td>
+                <td>{dias_asistidos}</td>
+                <td>{retardos}</td>
+                <td>{total_min_retardo}</td>
+                <td>{faltas}</td>
+            </tr>
+        """
+        
+        # Detectar empleados con retardos consecutivos (3 o más retardos en la semana)
+        if retardos >= 3:
+            empleados_retardos_consecutivos.append({
+                'nombre': empleado.user.get_full_name(),
+                'codigo': empleado.codigo_empleado,
+                'retardos': retardos
+            })
+    
+    html_reporte += "</table>"
+    
+    # Agregar alerta de retardos consecutivos si existen
+    if empleados_retardos_consecutivos:
+        html_reporte += """
+        <div class="alerta">
+            <h2>⚠️ Atención: Retardos Recurrentes</h2>
+            <p>Los siguientes empleados tienen 3 o más retardos esta semana:</p>
+            <table>
+                <tr>
+                    <th>Empleado</th>
+                    <th>Código</th>
+                    <th>Retardos (esta semana)</th>
+                </tr>
+        """
+        
+        for emp in empleados_retardos_consecutivos:
+            html_reporte += f"""
+                <tr>
+                    <td>{emp['nombre']}</td>
+                    <td>{emp['codigo']}</td>
+                    <td>{emp['retardos']}</td>
+                </tr>
+            """
+        
+        html_reporte += "</table></div>"
+    
+    html_reporte += "</body></html>"
+    
+    # Enviar email
+    email = EmailMessage(
+        f'Reporte Semanal de Asistencias - Semana del {fecha_inicio.strftime("%d/%m/%Y")}',
+        html_reporte,
+        settings.DEFAULT_FROM_EMAIL,
+        [config.email_gerente]
+    )
+    email.content_subtype = 'html'
+    email.send(fail_silently=False)
+
+
 def generar_reporte_diario():
     """Genera y envía el reporte diario después de las 12:00 PM"""
     hoy = timezone.now().date()

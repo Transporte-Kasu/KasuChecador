@@ -217,44 +217,140 @@
             form.submit();
         }
 
+        // 🔥 NUEVA FUNCIÓN: Verificar compatibilidad al inicio
+        function checkCameraSupport() {
+            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                const errorMsg = "Tu navegador no soporta acceso a cámara. Por favor usa Chrome, Firefox o Safari.";
+                document.getElementById('scanner-status').innerHTML = `
+                    <div class="text-red-600 text-center">
+                        <p class="text-xl font-semibold">❌ Navegador No Compatible</p>
+                        <p class="text-lg mt-2">${errorMsg}</p>
+                        <button onclick="toggleManualInput()" class="mt-4 bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-6 rounded-lg text-lg transition duration-200">
+                            Usar Ingreso Manual
+                        </button>
+                    </div>
+                `;
+                return false;
+            }
+            return true;
+        }
+
+
         // Start QR code scanner
         function startScanner() {
             html5QrCode = new Html5Qrcode("reader");
 
             const config = {
                 fps: 10,
-                qrbox: { width: 300, height: 300 },
-                aspectRatio: 1.0
+                qrbox: { width: 250, height: 250 },
+                aspectRatio: 1.0,
+                supportedScanTypes: [Html5QrcodeScanType.SCAN_TYPE_CAMERA]
             };
 
-            html5QrCode.start(
-                { facingMode: "environment" }, // Use back camera
-                config,
-                onScanSuccess,
-                onScanFailure
-            ).catch(err => {
-                console.error("Error starting scanner:", err);
-                // Try with front camera if back camera fails
-                html5QrCode.start(
-                    { facingMode: "user" },
-                    config,
-                    onScanSuccess,
-                    onScanFailure
-                ).catch(err => {
-                    console.error("Error starting scanner with front camera:", err);
-                    document.getElementById('scanner-status').innerHTML = `
-                        <div class="text-red-600">
-                            <p class="text-xl font-semibold">❌ No se pudo activar la cámara</p>
-                            <p class="text-lg mt-2">Por favor, permite el acceso a la cámara o usa el ingreso manual</p>
-                        </div>
-                    `;
-                });
+            // Función para mostrar errores de cámara
+            function showCameraError(error) {
+                console.error("Camera error:", error);
+                let errorMessage = "No se pudo activar la cámara";
+
+                if (error.includes("NotAllowedError")) {
+                    errorMessage = "Permiso de cámara denegado. Por favor permite el acceso a la cámara en la configuración de tu navegador.";
+                } else if (error.includes("NotFoundError")) {
+                    errorMessage = "No se encontró cámara disponible.";
+                } else if (error.includes("NotSupportedError")) {
+                    errorMessage = "Tu navegador no soporta el escaneo de QR. Usa Chrome o Safari.";
+                } else if (error.includes("NotReadableError")) {
+                    errorMessage = "La cámara está siendo usada por otra aplicación.";
+                }
+
+                document.getElementById('scanner-status').innerHTML = `
+                    <div class="text-red-600 text-center">
+                        <svg class="w-16 h-16 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z"/>
+                        </svg>
+                        <p class="text-xl font-semibold">❌ Error de Cámara</p>
+                        <p class="text-lg mt-2">${errorMessage}</p>
+                        <button onclick="toggleManualInput()" class="mt-4 bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-6 rounded-lg text-lg transition duration-200">
+                            Usar Ingreso Manual
+                        </button>
+                    </div>
+                `;
+            }
+
+            // 🔥 NUEVA FUNCIÓN: Solicitar permisos explícitamente ANTES de iniciar el scanner
+            function requestCameraPermission() {
+                return navigator.mediaDevices.getUserMedia({ video: true })
+                    .then(stream => {
+                        // Detener stream inmediatamente - solo queríamos el permiso
+                        stream.getTracks().forEach(track => track.stop());
+                        return true;
+                    })
+                    .catch(error => {
+                        console.error("Permission denied:", error);
+                        showCameraError(error.toString());
+                        return false;
+                    });
+            }
+
+            // Función para iniciar el scanner una vez tenemos permisos
+            function startScannerWithPermission() {
+                // Secuencia de intentos de cámara
+                function tryStartScanner(facingMode) {
+                    return html5QrCode.start(
+                        { facingMode: facingMode },
+                        config,
+                        onScanSuccess,
+                        onScanFailure
+                    );
+                }
+
+                // Mostrar "iniciando" mientras carga
+                document.getElementById('scanner-status').innerHTML = `
+                    <div class="text-center">
+                        <svg class="animate-spin h-16 w-16 text-blue-500 mx-auto" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                        <p class="text-xl text-gray-600 mt-4 font-medium">Iniciando cámara...</p>
+                    </div>
+                `;
+
+                // Intentar diferentes cámaras en secuencia
+                tryStartScanner("environment")
+                    .catch(() => {
+                        console.log("Cámara trasera falló, intentando frontal...");
+                        return tryStartScanner("user");
+                    })
+                    .catch(() => {
+                        console.log("Cámaras específicas fallaron, intentando automático...");
+                        return html5QrCode.start(
+                            { aspectRatio: 1.0 },
+                            config,
+                            onScanSuccess,
+                            onScanFailure
+                        );
+                    })
+                    .then(() => {
+                        // Scanner iniciado exitosamente
+                        console.log("Scanner iniciado correctamente");
+                    })
+                    .catch((error) => {
+                        showCameraError(error.toString());
+                    });
+            }
+
+            // 🔥 PASO CLAVE: Primero solicitar permisos, luego iniciar scanner
+            requestCameraPermission().then(hasPermission => {
+                if (hasPermission) {
+                    startScannerWithPermission();
+                }
+                // Si no tiene permisos, showCameraError ya fue llamado en requestCameraPermission
             });
         }
-
         // Initialize scanner on page load
         window.addEventListener('load', () => {
-            startScanner();
+            if (checkCameraSupport()) {
+                startScanner();
+            }
         });
 
         // Cleanup on page unload

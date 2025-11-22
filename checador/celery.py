@@ -15,13 +15,9 @@ app.conf.beat_schedule = {
         'task': 'attendance.tasks.enviar_reporte_diario_task',
         'schedule': crontab(hour=12, minute=5),  # 12:05 PM diario
     },
-    'reporte-quincenal-13': {
-        'task': 'attendance.tasks.enviar_reporte_quincenal_task',
-        'schedule': crontab(day_of_month=13, hour=18, minute=0),  # Día 13, 6:00 PM
-    },
-    'reporte-quincenal-28': {
-        'task': 'attendance.tasks.enviar_reporte_quincenal_task',
-        'schedule': crontab(day_of_month=28, hour=18, minute=0),  # Día 28, 6:00 PM
+    'reporte-semanal': {
+        'task': 'attendance.tasks.enviar_reporte_semanal_task',
+        'schedule': crontab(day_of_week=4, hour=12, minute=0),  # Todos los jueves a las 12:00 PM
     },
     'reporte-tiempo-extra-mensual': {
         'task': 'attendance.tasks.generar_reporte_tiempo_extra_task',
@@ -33,31 +29,33 @@ app.conf.beat_schedule = {
 # attendance/tasks.py
 from celery import shared_task
 from django.utils import timezone
-from .utils import generar_reporte_diario, generar_reporte_quincenal, generar_reporte_tiempo_extra_mensual
+from datetime import timedelta
 
 @shared_task
 def enviar_reporte_diario_task():
     """Tarea para enviar el reporte diario"""
     try:
+        from attendance.utils import generar_reporte_diario
         generar_reporte_diario()
         return "Reporte diario enviado exitosamente"
     except Exception as e:
         return f"Error al enviar reporte diario: {str(e)}"
 
 @shared_task
-def enviar_reporte_quincenal_task():
-    """Tarea para enviar el reporte quincenal"""
+def enviar_reporte_semanal_task():
+    """Tarea para enviar el reporte semanal (todos los jueves)"""
     try:
-        hoy = timezone.now().date()
-        generar_reporte_quincenal(hoy.day)
-        return f"Reporte quincenal del día {hoy.day} enviado exitosamente"
+        from attendance.utils import generar_reporte_semanal
+        generar_reporte_semanal()
+        return "Reporte semanal enviado exitosamente"
     except Exception as e:
-        return f"Error al enviar reporte quincenal: {str(e)}"
+        return f"Error al enviar reporte semanal: {str(e)}"
 
 @shared_task
 def generar_reporte_tiempo_extra_task():
     """Tarea para generar el reporte mensual de tiempo extra"""
     try:
+        from attendance.utils import generar_reporte_tiempo_extra_mensual
         generar_reporte_tiempo_extra_mensual()
         return "Reporte de tiempo extra generado exitosamente"
     except Exception as e:

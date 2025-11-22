@@ -314,11 +314,11 @@
                     </div>
                 `;
 
-                // Intentar diferentes cámaras en secuencia
-                tryStartScanner("environment")
+                // Intentar diferentes cámaras en secuencia (prioridad: cámara frontal)
+                tryStartScanner("user")
                     .catch(() => {
-                        console.log("Cámara trasera falló, intentando frontal...");
-                        return tryStartScanner("user");
+                        console.log("Cámara frontal falló, intentando trasera...");
+                        return tryStartScanner("environment");
                     })
                     .catch(() => {
                         console.log("Cámaras específicas fallaron, intentando automático...");
