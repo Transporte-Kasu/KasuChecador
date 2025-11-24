@@ -11,19 +11,24 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 """
 
 from pathlib import Path
+import environ
+import os
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
+env = environ.Env()
+environ.Env.read_env(os.path.join(BASE_DIR, ".env.local"))
 
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-%opi-6o8m6qzs5v00$43q5+*rddr(n%so2svodu*^hyk5srwu)'
+#SECRET_KEY = 'django-insecure-%opi-6o8m6qzs5v00$43q5+*rddr(n%so2svodu*^hyk5srwu)'
+SECRET_KEY = env.str('SECRET_KEY')
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = False
 
 ALLOWED_HOSTS = [
     '.oyster-app-afeyk.ondigitalocean.app',
@@ -78,13 +83,29 @@ WSGI_APPLICATION = 'checador.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/5.2/ref/settings/#databases
 
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+if DEBUG:
+    print("Modo de desarollo....OJO")
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': BASE_DIR / 'db.sqlite3',
+        }
     }
-}
-
+else:
+    print("Modo de produccion....OJO")
+    DATABASES = {
+        "default": {
+            "ENGINE": "django.db.backends.mysql",
+            "NAME": env.str('DATABASE'),
+            "USER": env.str('USERNAME'),
+            "PASSWORD": env.str('PASSWORD'),
+            "HOST": env.str('HOST'),
+            "PORT": env.str('PORT'),
+            # "OPTIONS":{
+            #     'ssl_mode': 'REQUIRED',
+            # }
+        }
+    }
 
 # Password validation
 # https://docs.djangoproject.com/en/5.2/ref/settings/#auth-password-validators
