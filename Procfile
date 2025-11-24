@@ -1,1 +1,1 @@
-web: python manage.py runserver 0.0.0.0:8080
+web: uvicorn checador.asgi:application --port 8080

@@ -140,6 +140,7 @@ USE_TZ = True
 
 STATIC_URL = 'static/'
 STATIC_ROOT = BASE_DIR / 'staticfiles'
+STATICFILES_DIRS = [Path.joinpath(BASE_DIR, 'static'), ]
 
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
@@ -173,3 +174,5 @@ SECURE_CONTENT_TYPE_NOSNIFF = True
 CSRF_TRUSTED_ORIGINS = [
     'https://checador-kasu-app.ondigitalocean.app',
 ]
+SESSION_COOKIE_SECURE = True
+CSRF_COOKIE_SECURE = True
