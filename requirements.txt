@@ -8,7 +8,9 @@ click-plugins==1.1.1.2
 click-repl==0.3.0
 Django==5.2.8
 django-crispy-forms==2.5
+django-environ==0.12.0
 kombu==5.5.4
+mysqlclient==2.2.7
 numpy==2.3.5
 packaging==25.0
 pandas==2.3.3
