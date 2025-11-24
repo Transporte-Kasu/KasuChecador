@@ -17,10 +17,29 @@ class Departamento(models.Model):
     class Meta:
         verbose_name_plural = "Departamentos"
 
+class TipoHorario(models.Model):
+    nombre = models.CharField(max_length=100)
+    descripcion = models.TextField(blank=True)
+    es_turno_24h = models.BooleanField(default=False, verbose_name="Es turno de 24 horas")
+    hora_entrada = models.TimeField(null=True, blank=True)
+    hora_salida = models.TimeField(null=True, blank=True)
+    minutos_tolerancia = models.IntegerField(default=15)
+    tiene_horario_comida = models.BooleanField(default=False)
+    hora_inicio_comida = models.TimeField(null=True, blank=True)
+    hora_fin_comida = models.TimeField(null=True, blank=True)
+    activo = models.BooleanField(default=True)
+
+    def __str__(self):
+        return self.nombre
+
+    class Meta:
+        verbose_name_plural = "Tipos de Horario"
+
 class Empleado(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE)
     codigo_empleado = models.CharField(max_length=20, unique=True)
     departamento = models.ForeignKey(Departamento, on_delete=models.SET_NULL, null=True)
+    tipo_horario = models.ForeignKey(TipoHorario, on_delete=models.SET_NULL, null=True, blank=True)
     qr_code = models.ImageField(upload_to='qr_codes/', blank=True)
     qr_uuid = models.UUIDField(default=uuid.uuid4, editable=False, unique=True)
     tiempo_extra_habilitado = models.BooleanField(default=False)
@@ -67,11 +86,58 @@ class Asistencia(models.Model):
     def __str__(self):
         return f"{self.empleado.user.get_full_name()} - {self.tipo_movimiento} - {self.fecha}"
 
-    def calcular_retardo(self, hora_entrada_esperada="09:00:00"):
-        """Calcula si hay retardo considerando 15 minutos de tolerancia"""
+    def calcular_retardo(self, hora_entrada_esperada="09:00:00", minutos_tolerancia=15):
+        """Calcula si hay retardo considerando minutos de tolerancia"""
         if self.tipo_movimiento == TipoMovimiento.ENTRADA:
-            hora_esperada = datetime.strptime(hora_entrada_esperada, "%H:%M:%S").time()
-            tolerancia = timedelta(minutes=15)
+            # Obtener configuración del tipo de horario del empleado
+            tipo_horario = self.empleado.tipo_horario
+            
+            # Si el empleado tiene tipo de horario asignado, usar esa configuración
+            if tipo_horario:
+                # Para turnos de 24 horas, verificar el ciclo
+                if tipo_horario.es_turno_24h:
+                    # Buscar última entrada del empleado para calcular el ciclo esperado
+                    ultima_entrada = Asistencia.objects.filter(
+                        empleado=self.empleado,
+                        tipo_movimiento=TipoMovimiento.ENTRADA,
+                        fecha__lt=self.fecha
+                    ).order_by('-fecha', '-hora').first()
+                    
+                    if ultima_entrada:
+                        # Ciclo: 24h trabajo + 24h descanso = 48h total
+                        ultima_entrada_dt = datetime.combine(ultima_entrada.fecha, ultima_entrada.hora)
+                        entrada_actual_dt = datetime.combine(self.fecha, self.hora)
+                        diferencia_horas = (entrada_actual_dt - ultima_entrada_dt).total_seconds() / 3600
+                        
+                        # El empleado debería entrar ~48 horas después (permitir tolerancia de 2 horas)
+                        if diferencia_horas < 46:  # Menos de 46 horas = entrada anticipada
+                            self.retardo = False
+                            self.minutos_retardo = 0
+                        elif diferencia_horas > 50:  # Más de 50 horas = retardo
+                            self.retardo = True
+                            self.minutos_retardo = int((diferencia_horas - 48) * 60)
+                        else:
+                            self.retardo = False
+                            self.minutos_retardo = 0
+                    else:
+                        # Primera entrada, no hay retardo
+                        self.retardo = False
+                        self.minutos_retardo = 0
+                    return
+                
+                # Para horarios regulares, usar hora_entrada del tipo de horario
+                if tipo_horario.hora_entrada:
+                    hora_esperada = tipo_horario.hora_entrada
+                    tolerancia = timedelta(minutes=tipo_horario.minutos_tolerancia)
+                else:
+                    # Si no tiene hora_entrada definida, usar parámetro
+                    hora_esperada = datetime.strptime(hora_entrada_esperada, "%H:%M:%S").time()
+                    tolerancia = timedelta(minutes=minutos_tolerancia)
+            else:
+                # Fallback a configuración global o parámetros
+                hora_esperada = datetime.strptime(hora_entrada_esperada, "%H:%M:%S").time()
+                tolerancia = timedelta(minutes=minutos_tolerancia)
+            
             hora_limite = (datetime.combine(datetime.today(), hora_esperada) + tolerancia).time()
 
             if self.hora > hora_limite:

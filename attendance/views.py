@@ -77,20 +77,58 @@ def checkin_view_tablet(request):
 def procesar_checkin_empleado(request, empleado, redirect_to='checkin'):
     """Procesa el check-in de un empleado"""
     hoy = timezone.now().date()
+    ahora = timezone.now().time()
     ultima_asistencia = Asistencia.objects.filter(
         empleado=empleado,
         fecha=hoy
     ).order_by('-hora').first()
 
-    # Determinar el tipo de movimiento
+    # Obtener tipo de horario del empleado
+    tipo_horario = empleado.tipo_horario
+    
+    # Determinar el tipo de movimiento según el horario
     if not ultima_asistencia:
         tipo = TipoMovimiento.ENTRADA
-    elif ultima_asistencia.tipo_movimiento == TipoMovimiento.ENTRADA:
-        tipo = TipoMovimiento.SALIDA_COMIDA
-    elif ultima_asistencia.tipo_movimiento == TipoMovimiento.SALIDA_COMIDA:
-        tipo = TipoMovimiento.ENTRADA_COMIDA
     else:
-        tipo = TipoMovimiento.SALIDA
+        # Lógica según tipo de horario
+        if tipo_horario and tipo_horario.es_turno_24h:
+            # Turnos de 24 horas: solo ENTRADA y SALIDA
+            if ultima_asistencia.tipo_movimiento == TipoMovimiento.ENTRADA:
+                tipo = TipoMovimiento.SALIDA
+            else:
+                tipo = TipoMovimiento.ENTRADA
+        elif tipo_horario and not tipo_horario.tiene_horario_comida:
+            # Horario regular sin comida: solo ENTRADA y SALIDA
+            if ultima_asistencia.tipo_movimiento == TipoMovimiento.ENTRADA:
+                tipo = TipoMovimiento.SALIDA
+            else:
+                tipo = TipoMovimiento.ENTRADA
+        else:
+            # Horario con comida (default): secuencia completa
+            if ultima_asistencia.tipo_movimiento == TipoMovimiento.ENTRADA:
+                tipo = TipoMovimiento.SALIDA_COMIDA
+            elif ultima_asistencia.tipo_movimiento == TipoMovimiento.SALIDA_COMIDA:
+                tipo = TipoMovimiento.ENTRADA_COMIDA
+            elif ultima_asistencia.tipo_movimiento == TipoMovimiento.ENTRADA_COMIDA:
+                tipo = TipoMovimiento.SALIDA
+            else:
+                tipo = TipoMovimiento.ENTRADA
+    
+    # Validar horario de comida si aplica
+    if tipo == TipoMovimiento.SALIDA_COMIDA:
+        if tipo_horario and tipo_horario.tiene_horario_comida:
+            # Validar que esté dentro del rango de comida
+            if tipo_horario.hora_inicio_comida and tipo_horario.hora_fin_comida:
+                if not (tipo_horario.hora_inicio_comida <= ahora <= tipo_horario.hora_fin_comida):
+                    messages.error(
+                        request, 
+                        f"No puedes salir a comer fuera del horario permitido ({tipo_horario.hora_inicio_comida.strftime('%H:%M')} - {tipo_horario.hora_fin_comida.strftime('%H:%M')})"
+                    )
+                    return redirect(redirect_to)
+        elif tipo_horario and not tipo_horario.tiene_horario_comida:
+            # No tiene horario de comida, no permitir este movimiento
+            messages.error(request, "Tu horario no incluye salida a comida")
+            return redirect(redirect_to)
 
     asistencia = Asistencia.objects.create(
         empleado=empleado,
@@ -100,9 +138,11 @@ def procesar_checkin_empleado(request, empleado, redirect_to='checkin'):
     # Calcular retardo si es entrada
     if tipo == TipoMovimiento.ENTRADA:
         config = ConfiguracionSistema.objects.first()
-        if config:
-            asistencia.calcular_retardo(str(config.hora_entrada))
-            asistencia.save()
+        if tipo_horario and tipo_horario.hora_entrada:
+            asistencia.calcular_retardo(str(tipo_horario.hora_entrada), tipo_horario.minutos_tolerancia)
+        elif config:
+            asistencia.calcular_retardo(str(config.hora_entrada), config.minutos_tolerancia)
+        asistencia.save()
 
     mensaje = f"{empleado.user.get_full_name()} - {tipo}"
     if asistencia.retardo:

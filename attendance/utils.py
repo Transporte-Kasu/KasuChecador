@@ -2,7 +2,7 @@ from django.core.mail import EmailMessage
 from django.template.loader import render_to_string
 from django.utils import timezone
 from datetime import datetime, timedelta
-from .models import Asistencia, TipoMovimiento, Empleado, ConfiguracionSistema, TiempoExtra
+from .models import Asistencia, TipoMovimiento, Empleado, ConfiguracionSistema, TiempoExtra, TipoHorario
 import os
 from django.conf import settings
 
@@ -131,14 +131,6 @@ def generar_reporte_semanal():
             </tr>
     """
     
-    # Calcular días laborales (lunes a viernes en el rango)
-    dias_laborales = 0
-    fecha_actual = fecha_inicio
-    while fecha_actual <= fecha_fin:
-        if fecha_actual.weekday() < 5:  # Lunes a viernes
-            dias_laborales += 1
-        fecha_actual += timedelta(days=1)
-    
     # Recolectar empleados con retardos consecutivos
     empleados_retardos_consecutivos = []
     
@@ -153,7 +145,24 @@ def generar_reporte_semanal():
         dias_asistidos = asistencias.values('fecha').distinct().count()
         retardos = asistencias.filter(retardo=True).count()
         total_min_retardo = sum(asistencias.filter(retardo=True).values_list('minutos_retardo', flat=True))
-        faltas = dias_laborales - dias_asistidos
+        
+        # Calcular días/turnos laborales según tipo de horario
+        tipo_horario = empleado.tipo_horario
+        if tipo_horario and tipo_horario.es_turno_24h:
+            # Para turnos de 24h: calcular turnos esperados en el período
+            # Ciclo de 48 horas (24h trabajo + 24h descanso)
+            dias_periodo = (fecha_fin - fecha_inicio).days + 1
+            turnos_esperados = dias_periodo // 2  # Un turno cada 2 días
+            faltas = max(0, turnos_esperados - dias_asistidos)
+        else:
+            # Para horarios regulares: lunes a viernes
+            dias_laborales = 0
+            fecha_actual = fecha_inicio
+            while fecha_actual <= fecha_fin:
+                if fecha_actual.weekday() < 5:  # Lunes a viernes
+                    dias_laborales += 1
+                fecha_actual += timedelta(days=1)
+            faltas = dias_laborales - dias_asistidos
         
         html_reporte += f"""
             <tr>
@@ -284,16 +293,19 @@ def generar_reporte_diario():
             <tr>
                 <th>Empleado</th>
                 <th>Código</th>
+                <th>Tipo de Horario</th>
                 <th>Hora de Entrada</th>
                 <th>Minutos de Retardo</th>
             </tr>
     """
 
     for asistencia in retardos:
+        tipo_horario_nombre = asistencia.empleado.tipo_horario.nombre if asistencia.empleado.tipo_horario else 'Estándar'
         html_reporte += f"""
             <tr>
                 <td>{asistencia.empleado.user.get_full_name()}</td>
                 <td>{asistencia.empleado.codigo_empleado}</td>
+                <td>{tipo_horario_nombre}</td>
                 <td>{asistencia.hora.strftime('%H:%M')}</td>
                 <td>{asistencia.minutos_retardo}</td>
             </tr>
@@ -393,8 +405,6 @@ def generar_reporte_quincenal(dia):
             </tr>
     """
 
-    dias_laborales = (fecha_fin - fecha_inicio).days + 1
-
     for empleado in empleados:
         asistencias = Asistencia.objects.filter(
             empleado=empleado,
@@ -406,7 +416,18 @@ def generar_reporte_quincenal(dia):
         dias_asistidos = asistencias.values('fecha').distinct().count()
         retardos = asistencias.filter(retardo=True).count()
         total_min_retardo = sum(asistencias.filter(retardo=True).values_list('minutos_retardo', flat=True))
-        faltas = dias_laborales - dias_asistidos
+        
+        # Calcular días/turnos laborales según tipo de horario
+        tipo_horario = empleado.tipo_horario
+        if tipo_horario and tipo_horario.es_turno_24h:
+            # Para turnos de 24h: calcular turnos esperados en el período
+            dias_periodo = (fecha_fin - fecha_inicio).days + 1
+            turnos_esperados = dias_periodo // 2
+            faltas = max(0, turnos_esperados - dias_asistidos)
+        else:
+            # Para horarios regulares: todos los días del período
+            dias_laborales = (fecha_fin - fecha_inicio).days + 1
+            faltas = dias_laborales - dias_asistidos
 
         html_reporte += f"""
             <tr>

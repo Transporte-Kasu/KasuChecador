@@ -3,7 +3,7 @@ from django.contrib import admin
 from django.utils.html import format_html
 from .models import (
     Departamento, Empleado, Asistencia, TiempoExtra,
-    Visitante, RegistroVisita, ConfiguracionSistema
+    Visitante, RegistroVisita, ConfiguracionSistema, TipoHorario
 )
 
 @admin.register(Departamento)
@@ -11,10 +11,27 @@ class DepartamentoAdmin(admin.ModelAdmin):
     list_display = ['nombre', 'email']
     search_fields = ['nombre']
 
+@admin.register(TipoHorario)
+class TipoHorarioAdmin(admin.ModelAdmin):
+    list_display = ['nombre', 'es_turno_24h', 'hora_entrada', 'hora_salida', 'tiene_horario_comida', 'activo']
+    list_filter = ['es_turno_24h', 'tiene_horario_comida', 'activo']
+    search_fields = ['nombre', 'descripcion']
+    fieldsets = (
+        ('Información Básica', {
+            'fields': ('nombre', 'descripcion', 'activo')
+        }),
+        ('Configuración de Horario', {
+            'fields': ('es_turno_24h', 'hora_entrada', 'hora_salida', 'minutos_tolerancia')
+        }),
+        ('Horario de Comida', {
+            'fields': ('tiene_horario_comida', 'hora_inicio_comida', 'hora_fin_comida')
+        }),
+    )
+
 @admin.register(Empleado)
 class EmpleadoAdmin(admin.ModelAdmin):
-    list_display = ['codigo_empleado', 'get_nombre', 'departamento', 'tiempo_extra_habilitado', 'activo', 'ver_qr']
-    list_filter = ['activo', 'tiempo_extra_habilitado', 'departamento']
+    list_display = ['codigo_empleado', 'get_nombre', 'departamento', 'tipo_horario', 'tiempo_extra_habilitado', 'activo', 'ver_qr']
+    list_filter = ['activo', 'tiempo_extra_habilitado', 'departamento', 'tipo_horario']
     search_fields = ['codigo_empleado', 'user__first_name', 'user__last_name']
     readonly_fields = ['qr_uuid', 'mostrar_qr']
 
@@ -36,7 +53,7 @@ class EmpleadoAdmin(admin.ModelAdmin):
 
     fieldsets = (
         ('Información Básica', {
-            'fields': ('user', 'codigo_empleado', 'departamento', 'activo')
+            'fields': ('user', 'codigo_empleado', 'departamento', 'tipo_horario', 'activo')
         }),
         ('Código QR', {
             'fields': ('qr_uuid', 'mostrar_qr')
