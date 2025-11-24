@@ -31,7 +31,7 @@ SECRET_KEY = env.str('SECRET_KEY')
 DEBUG = False
 
 ALLOWED_HOSTS = [
-    '.oyster-app-afeyk.ondigitalocean.app',
+    '.checador-kasu-app.ondigitalocean.app',
     '.digitaloceanspaces.com',
     'localhost',
     '127.0.0.1',
@@ -151,12 +151,12 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 # Configuración de email (ejemplo con Gmail)
 EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
-EMAIL_HOST = 'smtp.gmail.com'
+EMAIL_HOST = 'smtp.sendgrid.net'
 EMAIL_PORT = 587
 EMAIL_USE_TLS = True
-EMAIL_HOST_USER = 'tu-email@gmail.com'  # Cambiar
-EMAIL_HOST_PASSWORD = 'tu-app-password'  # Usar App Password de Gmail
-DEFAULT_FROM_EMAIL = 'tu-email@gmail.com'
+EMAIL_HOST_USER = 'apikey'  # Cambiar
+EMAIL_HOST_PASSWORD = env.str('EMAIL_HOST_PASSWORD')  # Usar App Password de Gmail
+DEFAULT_FROM_EMAIL = 'checadorKasu@transportekasu.com.mx'
 
 # Configuración de Celery
 CELERY_BROKER_URL = 'redis://localhost:6379/0'
@@ -171,5 +171,5 @@ CELERY_ENABLE_UTC = False
 SECURE_BROWSER_XSS_FILTER = True
 SECURE_CONTENT_TYPE_NOSNIFF = True
 CSRF_TRUSTED_ORIGINS = [
-    'https://oyster-app-afeyk.ondigitalocean.app',
+    'https://checador-kasu-app.ondigitalocean.app',
 ]
