@@ -20,6 +20,41 @@ def health_check(request):
     """Simple health check endpoint que responde 200 OK"""
     return JsonResponse({"status": "ok"})
 
+@csrf_exempt
+def db_status(request):
+    """Check database connection status"""
+    from django.db import connection
+    import socket
+    
+    try:
+        # Configurar timeout
+        default_timeout = socket.getdefaulttimeout()
+        socket.setdefaulttimeout(5.0)
+        
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT 1")
+            result = cursor.fetchone()
+        
+        socket.setdefaulttimeout(default_timeout)
+        
+        return JsonResponse({
+            "status": "connected",
+            "database": connection.settings_dict['NAME'],
+            "host": connection.settings_dict['HOST']
+        })
+    except socket.timeout:
+        return JsonResponse({
+            "status": "timeout",
+            "error": "Database connection timed out after 5 seconds",
+            "help": "Database may still be provisioning or Trusted Sources not configured"
+        }, status=503)
+    except Exception as e:
+        return JsonResponse({
+            "status": "error",
+            "error": str(e),
+            "type": type(e).__name__
+        }, status=503)
+
 # Vista para tablet de recepción
 def checkin_view(request):
     """Vista principal para la tablet de checkin en recepción"""

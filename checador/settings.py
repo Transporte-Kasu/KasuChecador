@@ -89,6 +89,7 @@ DATABASES = {
         "PORT": env.str('PORT'),
         "OPTIONS": {
             'ssl_mode': env.str('SSLMODE', default='REQUIRED'),
+            'connect_timeout': 10,  # Timeout de conexión en segundos
         },
     }
 }

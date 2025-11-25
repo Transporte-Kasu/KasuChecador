@@ -4,6 +4,7 @@ from . import views
 urlpatterns = [
     # Health check para DigitalOcean
     path('health/', views.health_check, name='health_check'),
+    path('db-status/', views.db_status, name='db_status'),
     
     # Tablet de recepción
     path('checkin/', views.checkin_view, name='checkin'),
