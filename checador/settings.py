@@ -131,13 +131,19 @@ STATIC_ROOT = BASE_DIR / 'staticfiles'
 STATICFILES_DIRS = [Path.joinpath(BASE_DIR, 'static'), ]
 
 # Media files storage - DigitalOcean Spaces
-USE_SPACES = env.bool('USE_SPACES', default=False)
+# Check if Spaces credentials are available
+SPACES_KEY = env.str('SPACES_KEY', default='')
+SPACES_SECRET = env.str('SPACES_SECRET', default='')
+SPACES_BUCKET = env.str('SPACES_BUCKET', default='')
+
+# Only use Spaces if credentials are configured
+USE_SPACES = bool(SPACES_KEY and SPACES_SECRET and SPACES_BUCKET)
 
 if USE_SPACES:
     # DigitalOcean Spaces settings
-    AWS_ACCESS_KEY_ID = env.str('SPACES_KEY')
-    AWS_SECRET_ACCESS_KEY = env.str('SPACES_SECRET')
-    AWS_STORAGE_BUCKET_NAME = env.str('SPACES_BUCKET')
+    AWS_ACCESS_KEY_ID = SPACES_KEY
+    AWS_SECRET_ACCESS_KEY = SPACES_SECRET
+    AWS_STORAGE_BUCKET_NAME = SPACES_BUCKET
     AWS_S3_ENDPOINT_URL = env.str('SPACES_ENDPOINT', default='https://sfo3.digitaloceanspaces.com')
     AWS_S3_OBJECT_PARAMETERS = {
         'CacheControl': 'max-age=86400',
@@ -155,10 +161,10 @@ if USE_SPACES:
     
     print(f"Using Spaces: {AWS_STORAGE_BUCKET_NAME} at {MEDIA_URL}")
 else:
-    # Local storage (development)
+    # Local storage (fallback)
     MEDIA_URL = '/media/'
     MEDIA_ROOT = BASE_DIR / 'media'
-    print("Using local media storage")
+    print("Using local media storage (Spaces credentials not configured)")
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
