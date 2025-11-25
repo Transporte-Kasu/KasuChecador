@@ -131,28 +131,34 @@ STATIC_ROOT = BASE_DIR / 'staticfiles'
 STATICFILES_DIRS = [Path.joinpath(BASE_DIR, 'static'), ]
 
 # Media files storage - DigitalOcean Spaces
-USE_SPACES = env.bool('USE_SPACES', default=True)
+USE_SPACES = env.bool('USE_SPACES', default=False)
 
 if USE_SPACES:
     # DigitalOcean Spaces settings
-    AWS_ACCESS_KEY_ID = env.str('SPACES_KEY', default='')
-    AWS_SECRET_ACCESS_KEY = env.str('SPACES_SECRET', default='')
-    AWS_STORAGE_BUCKET_NAME = env.str('SPACES_BUCKET', default='')
+    AWS_ACCESS_KEY_ID = env.str('SPACES_KEY')
+    AWS_SECRET_ACCESS_KEY = env.str('SPACES_SECRET')
+    AWS_STORAGE_BUCKET_NAME = env.str('SPACES_BUCKET')
     AWS_S3_ENDPOINT_URL = env.str('SPACES_ENDPOINT', default='https://sfo3.digitaloceanspaces.com')
     AWS_S3_OBJECT_PARAMETERS = {
         'CacheControl': 'max-age=86400',
     }
     AWS_LOCATION = 'media'
     AWS_DEFAULT_ACL = 'public-read'
-    AWS_S3_CUSTOM_DOMAIN = f'{AWS_STORAGE_BUCKET_NAME}.sfo3.digitaloceanspaces.com'
+    
+    # Extraer región del endpoint
+    region = AWS_S3_ENDPOINT_URL.split('//')[1].split('.')[0]  # sfo3
+    AWS_S3_CUSTOM_DOMAIN = f'{AWS_STORAGE_BUCKET_NAME}.{region}.digitaloceanspaces.com'
     
     # Media files configuration
     DEFAULT_FILE_STORAGE = 'storages.backends.s3boto3.S3Boto3Storage'
     MEDIA_URL = f'https://{AWS_S3_CUSTOM_DOMAIN}/{AWS_LOCATION}/'
+    
+    print(f"Using Spaces: {AWS_STORAGE_BUCKET_NAME} at {MEDIA_URL}")
 else:
     # Local storage (development)
     MEDIA_URL = '/media/'
     MEDIA_ROOT = BASE_DIR / 'media'
+    print("Using local media storage")
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
