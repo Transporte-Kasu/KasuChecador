@@ -82,10 +82,10 @@ print("OJO....Base de Datos Digital Ocean....OJO")
 DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.mysql",
-        "NAME": env.str('DATABASE'),
-        "USER": env.str('USERNAME'),
-        "PASSWORD": env.str('PASSWORD'),
-        "HOST": env.str('HOST'),
+        "NAME": env.str('DATABASE', default='db'),
+        "USER": env.str('USERNAME', default='user'),
+        "PASSWORD": env.str('PASSWORD', default='pass'),
+        "HOST": env.str('HOST', default='localhost'),
         "PORT": env.str('DB_PORT', default='25060'),  # Puerto específico de MySQL
         "OPTIONS": {
             'ssl_mode': env.str('SSLMODE', default='REQUIRED'),
