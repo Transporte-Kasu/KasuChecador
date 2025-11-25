@@ -1,4 +1,5 @@
-from django.shortcuts import render, redirect, get_object_or_404
+from django.shortcuts import render, redirect
+from django.http import JsonResponse
 from django.views.generic import CreateView, ListView
 from django.contrib import messages
 from django.utils import timezone
@@ -11,8 +12,12 @@ from .models import (
 from .forms import VisitanteForm, CheckInForm
 from .utils import enviar_email_visitante, generar_reporte_diario, generar_reporte_quincenal
 import json
-from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
+
+# Health check endpoint para DigitalOcean
+def health_check(request):
+    """Simple health check endpoint que responde 200 OK"""
+    return JsonResponse({"status": "ok"})
 
 # Vista para tablet de recepción
 def checkin_view(request):
