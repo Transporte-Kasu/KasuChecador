@@ -28,9 +28,9 @@ environ.Env.read_env(os.path.join(BASE_DIR, ".env"))
 SECRET_KEY = env.str('SECRET_KEY')
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = env.bool('DEBUG', default=False)
 
-ALLOWED_HOSTS = ['*']
+ALLOWED_HOSTS = env.list('ALLOWED_HOSTS', default=['.ondigitalocean.app', 'localhost'])
 
 # Application definition
 
@@ -46,7 +46,7 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
-    #'whitenoise.middleware.WhiteNoiseMiddleware',
+    'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -78,15 +78,6 @@ WSGI_APPLICATION = 'checador.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/5.2/ref/settings/#databases
 
-
-# print("OJO....Base de Datos local....OJO")
-# DATABASES = {
-#     'default': {
-#         'ENGINE': 'django.db.backends.sqlite3',
-#         'NAME': BASE_DIR / 'db.sqlite3',
-#     }
-# }
-
 print("OJO....Base de Datos Digital Ocean....OJO")
 DATABASES = {
     "default": {
@@ -96,9 +87,9 @@ DATABASES = {
         "PASSWORD": env.str('PASSWORD'),
         "HOST": env.str('HOST'),
         "PORT": env.str('PORT'),
-        # "OPTIONS":{
-        #     'ssl_mode': 'REQUIRED',
-        # }
+        "OPTIONS": {
+            'ssl_mode': env.str('SSLMODE', default='REQUIRED'),
+        },
     }
 }
 
@@ -154,22 +145,13 @@ EMAIL_HOST_USER = 'apikey'  # Cambiar
 EMAIL_HOST_PASSWORD = env.str('EMAIL_HOST_PASSWORD')  # Usar App Password de Gmail
 DEFAULT_FROM_EMAIL = 'checadorKasu@transportekasu.com.mx'
 
-# Configuración de Celery
-CELERY_BROKER_URL = 'redis://localhost:6379/0'
-CELERY_RESULT_BACKEND = 'redis://localhost:6379/0'
-CELERY_ACCEPT_CONTENT = ['json']
-CELERY_TASK_SERIALIZER = 'json'
-CELERY_RESULT_SERIALIZER = 'json'
-CELERY_TIMEZONE = 'America/Mexico_City'
-CELERY_ENABLE_UTC = False
+# Celery deshabilitado. Los reportes periódicos se ejecutan vía GitHub Actions.
+# CELERY_BROKER_URL = ''
+# CELERY_RESULT_BACKEND = ''
 
 # Seguridad
 SECURE_BROWSER_XSS_FILTER = True
 SECURE_CONTENT_TYPE_NOSNIFF = True
-CSRF_TRUSTED_ORIGINS = [
-    'https://checador-kasu-app-ec7yo.ondigitalocean.app',
-    'https://*.checador-kasu-app-ec7yo.ondigitalocean.app',
-]
-#SESSION_COOKIE_SECURE = True
-#CSRF_COOKIE_SECURE = True
-#STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
+CSRF_TRUSTED_ORIGINS = env.list('CSRF_TRUSTED_ORIGINS', default=['https://*.ondigitalocean.app'])
+
+STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'

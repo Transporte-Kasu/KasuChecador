@@ -142,6 +142,11 @@ env.bak/
 venv.bak/
 .venvKasuChecador
 
+# Secretos
+.env
+.env.production
+db.sqlite3
+
 # Spyder project settings
 .spyderproject
 .spyproject
