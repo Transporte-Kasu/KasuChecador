@@ -18,18 +18,34 @@ except Exception as e:
     print(f"✗ ERROR al cargar configuración: {e}")
     sys.exit(1)
 
-# Verificar conexión a base de datos
+# Verificar conexión a base de datos (con timeout)
 print("\n[2/4] Probando conexión a base de datos...")
 try:
     from django.db import connection
+    import socket
+    
+    # Configurar timeout global para conexiones de socket
+    default_timeout = socket.getdefaulttimeout()
+    socket.setdefaulttimeout(10.0)  # 10 segundos timeout
+    
     with connection.cursor() as cursor:
         cursor.execute("SELECT 1")
         result = cursor.fetchone()
+    
+    # Restaurar timeout
+    socket.setdefaulttimeout(default_timeout)
+    
     print(f"✓ Conexión a base de datos exitosa: {result}")
+except socket.timeout:
+    print(f"⚠️  TIMEOUT de conexión a base de datos (>10s)")
+    print(f"   La app arrancará pero las peticiones a DB fallarán.")
+    print(f"   Verifica: Trusted Sources en DO MySQL, HOST, PORT, credenciales")
+    # NO salir - permitir que gunicorn arranque para debug
 except Exception as e:
-    print(f"✗ ERROR de conexión a base de datos: {e}")
+    print(f"⚠️  ERROR de conexión a base de datos: {e}")
     print(f"   Tipo: {type(e).__name__}")
-    sys.exit(1)
+    print(f"   La app arrancará pero las peticiones a DB fallarán.")
+    # NO salir - permitir que gunicorn arranque
 
 # Verificar que las migraciones están aplicadas
 print("\n[3/4] Verificando migraciones...")
