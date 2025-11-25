@@ -30,13 +30,7 @@ SECRET_KEY = env.str('SECRET_KEY')
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = [
-    '.checador-kasu-app-ec7yo.ondigitalocean.app',
-    '.digitaloceanspaces.com',
-    'localhost',
-    '127.0.0.1',
-    '0.0.0.0'
-]
+ALLOWED_HOSTS = ['*']
 
 # Application definition
 
