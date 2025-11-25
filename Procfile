@@ -1,1 +1,1 @@
-web: uvicorn checador.asgi:application --port 8080
+web: gunicorn checador.wsgi -b 0.0.0.0:8080

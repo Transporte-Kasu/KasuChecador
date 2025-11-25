@@ -84,7 +84,7 @@ WSGI_APPLICATION = 'checador.wsgi.application'
 # https://docs.djangoproject.com/en/5.2/ref/settings/#databases
 
 
-# print("Modo de desarollo....OJO")
+# print("OJO....Base de Datos local....OJO")
 # DATABASES = {
 #     'default': {
 #         'ENGINE': 'django.db.backends.sqlite3',
@@ -92,7 +92,7 @@ WSGI_APPLICATION = 'checador.wsgi.application'
 #     }
 # }
 
-print("Base de Datos Digital Ocean....OJO")
+print("OJO....Base de Datos Digital Ocean....OJO")
 DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.mysql",
