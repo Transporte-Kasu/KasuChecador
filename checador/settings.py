@@ -61,7 +61,7 @@ ROOT_URLCONF = 'checador.urls'
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
-        'DIRS': [BASE_DIR / 'attendance' / 'templates'],
+        'DIRS': [os.path.join(BASE_DIR,'templates')],
         'APP_DIRS': True,
         'OPTIONS': {
             'context_processors': [
@@ -150,15 +150,15 @@ if USE_SPACES:
     }
     AWS_LOCATION = 'media'
     AWS_DEFAULT_ACL = 'public-read'
-    
+
     # Extraer región del endpoint
     region = AWS_S3_ENDPOINT_URL.split('//')[1].split('.')[0]  # sfo3
     AWS_S3_CUSTOM_DOMAIN = f'{AWS_STORAGE_BUCKET_NAME}.{region}.digitaloceanspaces.com'
-    
+
     # Media files configuration
     DEFAULT_FILE_STORAGE = 'storages.backends.s3boto3.S3Boto3Storage'
     MEDIA_URL = f'https://{AWS_S3_CUSTOM_DOMAIN}/{AWS_LOCATION}/'
-    
+
     print(f"Using Spaces: {AWS_STORAGE_BUCKET_NAME} at {MEDIA_URL}")
 else:
     # Local storage (fallback)
