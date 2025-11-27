@@ -47,9 +47,9 @@ def enviar_email_visitante(visitante):
     email_visitante.attach_alternative(html_message, "text/html")
 
     # Adjuntar QR
-    if visitante.qr_code:
-        with open(visitante.qr_code.path, 'rb') as f:
-            email_visitante.attach('qr_code.png', f.read(), 'image/png')
+    #if visitante.qr_code:
+    #    with open(visitante.qr_code.path, 'rb') as f:
+    #        email_visitante.attach('qr_code.png', f.read(), 'image/png')
 
     email_visitante.send(fail_silently=False)
 
