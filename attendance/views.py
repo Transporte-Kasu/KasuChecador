@@ -264,14 +264,9 @@ def dashboard_view(request):
                 'retardos': retardos
             })
 
-
-    inicio_dia = timezone.make_aware(datetime.combine(hoy, datetime.min.time()))
-    fin_dia = timezone.make_aware(datetime.combine(hoy, datetime.max.time()))
-
     visitas_hoy = RegistroVisita.objects.filter(
-        hora_entrada__gte=inicio_dia,
-        hora_entrada__lte=fin_dia
-    ).select_related('visitante', 'visitante__departamento_visita').order_by('-hora_entrada')
+        fecha_visita=hoy
+    ).select_related('visitante', 'visitante__departamento_visita').order_by('-hora_visita')
 
     context = {
         'total_empleados': total_empleados,
