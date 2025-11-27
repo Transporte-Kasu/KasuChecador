@@ -264,7 +264,7 @@ def dashboard_view(request):
                 'retardos': retardos
             })
 
-    visitas_hoy = RegistroVisita.objects.filter(
+    visitas_hoy = Visitante.objects.filter(
         fecha_visita=hoy
     ).select_related('visitante', 'visitante__departamento_visita').order_by('-hora_visita')
 
