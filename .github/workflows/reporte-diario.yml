@@ -41,6 +41,9 @@ jobs:
           EMAIL_HOST_PASSWORD: ${{ secrets.SENDGRID_API_KEY }}
           CSRF_TRUSTED_ORIGINS: 'https://*.ondigitalocean.app'
         run: |
+          echo "HOST: $HOST"
+          echo "DATABASE: $DATABASE"
+          echo "DB_PORT: $DB_PORT"
           python manage.py enviar_reporte_dario
 
       - name: Send notification on failure
