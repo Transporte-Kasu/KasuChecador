@@ -29,16 +29,16 @@ jobs:
 
       - name: Run daily report command
         env:
-          SECRET_KEY: ${{ secrets.SECRET_KEY }}
+          SECRET_KEY: ${{ vars.SECRET_KEY }}
           DEBUG: 'False'
           ALLOWED_HOSTS: '.ondigitalocean.app,localhost'
-          USERNAME: ${{ secrets.DB_USERNAME }}
-          PASSWORD: ${{ secrets.DB_PASSWORD }}
-          HOST: ${{ secrets.DB_HOST }}
-          DB_PORT: ${{ secrets.DB_PORT }}
-          DATABASE: ${{ secrets.DB_NAME }}
+          USERNAME: ${{ vars.DB_USERNAME }}
+          PASSWORD: ${{ vars.DB_PASSWORD }}
+          HOST: ${{ vars.DB_HOST }}
+          DB_PORT: ${{ vars.DB_PORT }}
+          DATABASE: ${{ vars.DB_NAME }}
           SSLMODE: 'REQUIRED'
-          EMAIL_HOST_PASSWORD: ${{ secrets.SENDGRID_API_KEY }}
+          EMAIL_HOST_PASSWORD: ${{ vars.SENDGRID_API_KEY }}
           CSRF_TRUSTED_ORIGINS: 'https://*.ondigitalocean.app'
         run: |
           echo "HOST: $HOST"
