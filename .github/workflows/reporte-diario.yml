@@ -35,7 +35,7 @@ jobs:
           USERNAME: ${{ secrets.DB_USERNAME }}
           PASSWORD: ${{ secrets.DB_PASSWORD }}
           HOST: ${{ secrets.DB_HOST }}
-          PORT: ${{ secrets.DB_PORT }}
+          DB_ PORT: ${{ secrets.DB_PORT }}
           DATABASE: ${{ secrets.DB_NAME }}
           SSLMODE: 'REQUIRED'
           EMAIL_HOST_PASSWORD: ${{ secrets.SENDGRID_API_KEY }}
