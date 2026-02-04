@@ -187,7 +187,10 @@ DEFAULT_FROM_EMAIL = 'checadorKasu@transportekasu.com.mx'
 # Seguridad
 SECURE_BROWSER_XSS_FILTER = True
 SECURE_CONTENT_TYPE_NOSNIFF = True
-CSRF_TRUSTED_ORIGINS = 'https://checador-kasu-app-xddvb.ondigitalocean.app'
+CSRF_TRUSTED_ORIGINS = [
+    'https://checador-kasu-app-xddvb.ondigitalocean.app'
+]
+
 # CORS Settings
 CORS_ALLOWED_ORIGINS = [
     'http://localhost:3000',
