@@ -1,10 +1,11 @@
 from django.shortcuts import render, redirect
-from django.http import JsonResponse
+from django.http import JsonResponse, HttpResponse
 from django.views.generic import CreateView, ListView
 from django.contrib import messages
 from django.utils import timezone
 from django.db.models import Count, Q
 from datetime import datetime, timedelta
+from django.views.decorators.http import require_http_methods
 from .models import (
     Empleado, Asistencia, TipoMovimiento, Visitante,
     RegistroVisita, TiempoExtra, ConfiguracionSistema,
@@ -18,9 +19,10 @@ from django.views.decorators.csrf import csrf_exempt
 
 # Health check endpoint para DigitalOcean
 @csrf_exempt
+@require_http_methods(["GET", "HEAD"])
 def health_check(request):
     """Simple health check endpoint que responde 200 OK"""
-    return JsonResponse({"status": "ok"})
+    return HttpResponse(status=200)
 
 @csrf_exempt
 def db_status(request):
