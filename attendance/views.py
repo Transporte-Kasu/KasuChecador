@@ -19,10 +19,10 @@ from django.views.decorators.csrf import csrf_exempt
 
 # Health check endpoint para DigitalOcean
 @csrf_exempt
-@require_http_methods(["GET", "HEAD"])
 def health_check(request):
     """Simple health check endpoint que responde 200 OK"""
-    return HttpResponse(status=200)
+    # Responder a cualquier método HTTP para evitar problemas
+    return HttpResponse("OK", status=200, content_type="text/plain")
 
 @csrf_exempt
 def db_status(request):

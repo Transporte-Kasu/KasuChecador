@@ -30,7 +30,15 @@ SECRET_KEY = env.str('SECRET_KEY')
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = env.bool('DEBUG', default=False)
 
-ALLOWED_HOSTS = env.list('ALLOWED_HOSTS', default=['.ondigitalocean.app', 'localhost'])
+# ALLOWED_HOSTS con configuración más permisiva para health checks
+ALLOWED_HOSTS_RAW = env.str('ALLOWED_HOSTS', default='.ondigitalocean.app,localhost')
+ALLOWED_HOSTS = [h.strip() for h in ALLOWED_HOSTS_RAW.split(',') if h.strip()]
+
+# Agregar wildcard si está vacío (para evitar error 400)
+if not ALLOWED_HOSTS:
+    ALLOWED_HOSTS = ['*']
+
+print(f"ALLOWED_HOSTS configurado: {ALLOWED_HOSTS}")
 
 # Application definition
 
@@ -46,6 +54,7 @@ INSTALLED_APPS = [
 ]
 
 MIDDLEWARE = [
+    'checador.middleware.HealthCheckMiddleware',  # DEBE IR PRIMERO para evitar error 400 en health check
     'django.middleware.security.SecurityMiddleware',
     'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
