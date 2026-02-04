@@ -1,0 +1,310 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Asignación de Turnos - {{ nombre_mes }} {{ anio }}</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .tabla-turnos {
+            font-size: 0.75rem;
+        }
+        .celda-turno {
+            min-width: 80px;
+            height: 50px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .celda-turno:hover {
+            transform: scale(1.05);
+            box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+        }
+        .empleado-nombre {
+            min-width: 150px;
+            position: sticky;
+            left: 0;
+            background: white;
+            z-index: 10;
+        }
+        .dia-header {
+            position: sticky;
+            top: 0;
+            background: white;
+            z-index: 20;
+        }
+        .tabla-container {
+            overflow-x: auto;
+            max-height: 80vh;
+        }
+    </style>
+</head>
+<body class="bg-gray-50">
+    <div class="container mx-auto px-4 py-6">
+        <!-- Encabezado -->
+        <div class="bg-white rounded-lg shadow-md p-6 mb-4">
+            <div class="flex justify-between items-center">
+                <h1 class="text-3xl font-bold text-gray-800">
+                    Asignación de Turnos - {{ nombre_mes|title }} {{ anio }}
+                </h1>
+                <div class="flex gap-2">
+                    <a href="{% url 'asignacion_turnos' mes_anterior anio_anterior %}" 
+                       class="px-4 py-2 bg-gray-200 hover:bg-gray-300 rounded-lg">
+                        ← Mes Anterior
+                    </a>
+                    <a href="{% url 'asignacion_turnos' mes_siguiente anio_siguiente %}" 
+                       class="px-4 py-2 bg-gray-200 hover:bg-gray-300 rounded-lg">
+                        Mes Siguiente →
+                    </a>
+                </div>
+            </div>
+        </div>
+
+        <!-- Leyenda de colores -->
+        <div class="bg-white rounded-lg shadow-md p-4 mb-4">
+            <h3 class="font-semibold mb-2">Leyenda:</h3>
+            <div class="flex flex-wrap gap-4 text-sm">
+                <div class="flex items-center">
+                    <div class="w-6 h-6 bg-white border-2 border-gray-300 mr-2"></div>
+                    <span>Sin asignar</span>
+                </div>
+                <div class="flex items-center">
+                    <div class="w-6 h-6 bg-gray-200 mr-2"></div>
+                    <span>Descanso</span>
+                </div>
+                <div class="flex items-center">
+                    <div class="w-6 h-6 bg-blue-100 mr-2"></div>
+                    <span>Turno normal</span>
+                </div>
+                <div class="flex items-center">
+                    <div class="w-6 h-6 bg-yellow-100 mr-2"></div>
+                    <span>Turno nocturno (cruza medianoche)</span>
+                </div>
+                <div class="flex items-center">
+                    <div class="w-6 h-6 bg-green-100 mr-2"></div>
+                    <span>Horario personalizado</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tabla de turnos -->
+        <div class="bg-white rounded-lg shadow-md p-4 tabla-container">
+            <table class="w-full border-collapse tabla-turnos">
+                <thead>
+                    <tr class="dia-header">
+                        <th class="border p-2 empleado-nombre">Empleado</th>
+                        {% for dia in dias_del_mes %}
+                        <th class="border p-1 text-center {% if dia.es_fin_semana %}bg-blue-50{% endif %}">
+                            <div class="font-bold">{{ dia.numero }}</div>
+                            <div class="text-xs text-gray-500">{{ dia.dia_semana }}</div>
+                        </th>
+                        {% endfor %}
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for empleado_data in empleados_data %}
+                    <tr>
+                        <td class="border p-2 empleado-nombre font-semibold">
+                            {{ empleado_data.empleado.user.get_full_name }}
+                        </td>
+                        {% for dia in empleado_data.dias %}
+                        <td class="border p-1 celda-turno {{ dia.color }} text-center"
+                            data-empleado-id="{{ empleado_data.empleado.id }}"
+                            data-fecha="{{ dia.fecha|date:'Y-m-d' }}"
+                            data-asignacion-id="{{ dia.asignacion_id|default:'' }}"
+                            onclick="abrirModalAsignacion(this)">
+                            <div class="font-bold">{{ dia.texto }}</div>
+                            {% if dia.horario %}
+                            <div class="text-xs text-gray-600">{{ dia.horario }}</div>
+                            {% endif %}
+                            {% if dia.cruza_medianoche %}
+                            <div class="text-xs text-orange-600">🌙</div>
+                            {% endif %}
+                        </td>
+                        {% endfor %}
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Modal para asignar turno -->
+    <div id="modalAsignacion" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50">
+        <div class="bg-white rounded-lg shadow-xl p-6 max-w-md w-full mx-4">
+            <h3 class="text-xl font-bold mb-4">Asignar Turno</h3>
+            
+            <div class="mb-4">
+                <label class="block text-sm font-medium mb-2">Empleado:</label>
+                <p id="modal-empleado-nombre" class="text-gray-700"></p>
+            </div>
+
+            <div class="mb-4">
+                <label class="block text-sm font-medium mb-2">Fecha:</label>
+                <p id="modal-fecha" class="text-gray-700"></p>
+            </div>
+
+            <div class="mb-4">
+                <label class="block text-sm font-medium mb-2">Tipo de asignación:</label>
+                <select id="tipo-asignacion" class="w-full border rounded-lg p-2" onchange="cambiarTipoAsignacion()">
+                    <option value="">-- Seleccione --</option>
+                    <option value="descanso">Día de Descanso</option>
+                    <option value="turno">Turno Predefinido</option>
+                    <option value="personalizado">Horario Personalizado</option>
+                    <option value="eliminar" class="text-red-600">Eliminar Asignación</option>
+                </select>
+            </div>
+
+            <!-- Sección de turno predefinido -->
+            <div id="seccion-turno" class="mb-4 hidden">
+                <label class="block text-sm font-medium mb-2">Seleccionar turno:</label>
+                <select id="turno-id" class="w-full border rounded-lg p-2">
+                    <option value="">-- Seleccione turno --</option>
+                    {% for turno in turnos_disponibles %}
+                    <option value="{{ turno.id }}">
+                        {{ turno.nombre }} ({{ turno.hora_entrada|time:"H:i" }} - {{ turno.hora_salida|time:"H:i" }})
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <!-- Sección de horario personalizado -->
+            <div id="seccion-personalizado" class="mb-4 hidden">
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm font-medium mb-2">Hora entrada:</label>
+                        <input type="time" id="hora-entrada" class="w-full border rounded-lg p-2">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium mb-2">Hora salida:</label>
+                        <input type="time" id="hora-salida" class="w-full border rounded-lg p-2">
+                    </div>
+                </div>
+                <p class="text-xs text-gray-500 mt-2">
+                    💡 Si la hora de salida es menor que la entrada, se detectará automáticamente como turno nocturno
+                </p>
+            </div>
+
+            <div class="flex gap-2 mt-6">
+                <button onclick="guardarAsignacion()" 
+                        class="flex-1 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg">
+                    Guardar
+                </button>
+                <button onclick="cerrarModal()" 
+                        class="flex-1 bg-gray-300 hover:bg-gray-400 px-4 py-2 rounded-lg">
+                    Cancelar
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let empleadoActual = null;
+        let fechaActual = null;
+        let celdaActual = null;
+
+        function abrirModalAsignacion(celda) {
+            celdaActual = celda;
+            empleadoActual = celda.dataset.empleadoId;
+            fechaActual = celda.dataset.fecha;
+            
+            // Obtener nombre del empleado (desde la primera celda de la fila)
+            const fila = celda.parentElement;
+            const nombreEmpleado = fila.querySelector('.empleado-nombre').textContent.trim();
+            
+            document.getElementById('modal-empleado-nombre').textContent = nombreEmpleado;
+            document.getElementById('modal-fecha').textContent = fechaActual;
+            
+            // Reset form
+            document.getElementById('tipo-asignacion').value = '';
+            document.getElementById('turno-id').value = '';
+            document.getElementById('hora-entrada').value = '';
+            document.getElementById('hora-salida').value = '';
+            document.getElementById('seccion-turno').classList.add('hidden');
+            document.getElementById('seccion-personalizado').classList.add('hidden');
+            
+            // Mostrar modal
+            document.getElementById('modalAsignacion').classList.remove('hidden');
+            document.getElementById('modalAsignacion').classList.add('flex');
+        }
+
+        function cerrarModal() {
+            document.getElementById('modalAsignacion').classList.add('hidden');
+            document.getElementById('modalAsignacion').classList.remove('flex');
+        }
+
+        function cambiarTipoAsignacion() {
+            const tipo = document.getElementById('tipo-asignacion').value;
+            document.getElementById('seccion-turno').classList.add('hidden');
+            document.getElementById('seccion-personalizado').classList.add('hidden');
+            
+            if (tipo === 'turno') {
+                document.getElementById('seccion-turno').classList.remove('hidden');
+            } else if (tipo === 'personalizado') {
+                document.getElementById('seccion-personalizado').classList.remove('hidden');
+            }
+        }
+
+        async function guardarAsignacion() {
+            const tipo = document.getElementById('tipo-asignacion').value;
+            
+            if (!tipo) {
+                alert('Por favor seleccione un tipo de asignación');
+                return;
+            }
+
+            const data = {
+                empleado_id: empleadoActual,
+                fecha: fechaActual,
+                tipo: tipo
+            };
+
+            if (tipo === 'turno') {
+                data.turno_id = document.getElementById('turno-id').value;
+                if (!data.turno_id) {
+                    alert('Por favor seleccione un turno');
+                    return;
+                }
+            } else if (tipo === 'personalizado') {
+                data.hora_entrada = document.getElementById('hora-entrada').value;
+                data.hora_salida = document.getElementById('hora-salida').value;
+                if (!data.hora_entrada || !data.hora_salida) {
+                    alert('Por favor ingrese ambas horas');
+                    return;
+                }
+            }
+
+            try {
+                const response = await fetch('{% url "guardar_asignacion_turno" %}', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(data)
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    alert(result.mensaje);
+                    cerrarModal();
+                    // Recargar página para mostrar cambios
+                    location.reload();
+                } else {
+                    alert('Error: ' + (result.error || 'Error desconocido'));
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                alert('Error al guardar la asignación');
+            }
+        }
+
+        // Cerrar modal con ESC
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') {
+                cerrarModal();
+            }
+        });
+    </script>
+</body>
+</html>

@@ -7,7 +7,7 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         ahora = timezone.now()
-        
+
         # Verificar si es jueves (weekday = 3)
         if ahora.weekday() == 3:
             self.stdout.write('Generando reporte semanal...')

@@ -18,4 +18,9 @@ urlpatterns = [
     path('dashboard/', views.dashboard_view, name='dashboard'),
     path('reporte/mensual/', views.reporte_mensual_view, name='reporte_mensual'),
     path('reporte/mensual/<int:mes>/<int:anio>/', views.reporte_mensual_view, name='reporte_mensual_detalle'),
+    
+    # Asignación de turnos
+    path('turnos/asignacion/', views.asignacion_turnos_mensual, name='asignacion_turnos'),
+    path('turnos/asignacion/<int:mes>/<int:anio>/', views.asignacion_turnos_mensual, name='asignacion_turnos'),
+    path('turnos/guardar/', views.guardar_asignacion_turno, name='guardar_asignacion_turno'),
 ]

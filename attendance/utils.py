@@ -1,10 +1,166 @@
 from django.core.mail import EmailMessage, EmailMultiAlternatives
 from django.template.loader import render_to_string
 from django.utils import timezone
-from datetime import datetime, timedelta
-from .models import Asistencia, TipoMovimiento, Empleado, ConfiguracionSistema, TiempoExtra, TipoHorario
+from datetime import datetime, timedelta, date
+from .models import (
+    Asistencia, TipoMovimiento, Empleado, ConfiguracionSistema, TiempoExtra, TipoHorario,
+    HorarioDiaSemana, AsignacionTurnoRotativo, TipoSistemaHorario
+)
 import os
 from django.conf import settings
+
+def obtener_horario_esperado(empleado, fecha):
+    """
+    Obtiene el horario esperado de un empleado para una fecha específica.
+    
+    Args:
+        empleado: Instancia de Empleado
+        fecha: datetime.date o datetime.datetime
+    
+    Returns:
+        dict: {
+            'hora_entrada': time o None,
+            'hora_salida': time o None,
+            'es_dia_laboral': bool,
+            'tolerancia_minutos': int,
+            'tiene_horario_comida': bool,
+            'hora_inicio_comida': time o None,
+            'hora_fin_comida': time o None,
+            'tipo_sistema': str
+        }
+    """
+    # Convertir datetime a date si es necesario
+    if isinstance(fecha, datetime):
+        fecha = fecha.date()
+    
+    tipo_horario = empleado.tipo_horario
+    
+    # Si no tiene tipo de horario asignado, usar configuración global
+    if not tipo_horario:
+        config = ConfiguracionSistema.objects.first()
+        if config:
+            return {
+                'hora_entrada': config.hora_entrada,
+                'hora_salida': None,
+                'es_dia_laboral': fecha.weekday() < 5,  # Lunes a viernes
+                'tolerancia_minutos': config.minutos_tolerancia,
+                'tiene_horario_comida': False,
+                'hora_inicio_comida': None,
+                'hora_fin_comida': None,
+                'tipo_sistema': 'FIJO'
+            }
+        else:
+            # Fallback si no hay configuración
+            return {
+                'hora_entrada': datetime.strptime('09:00:00', '%H:%M:%S').time(),
+                'hora_salida': None,
+                'es_dia_laboral': fecha.weekday() < 5,
+                'tolerancia_minutos': 15,
+                'tiene_horario_comida': False,
+                'hora_inicio_comida': None,
+                'hora_fin_comida': None,
+                'tipo_sistema': 'FIJO'
+            }
+    
+    # Según el tipo de sistema
+    tipo_sistema = tipo_horario.tipo_sistema
+    
+    # TURNO 24x24 HORAS
+    if tipo_sistema == TipoSistemaHorario.TURNO_24H or tipo_horario.es_turno_24h:
+        # Para turnos de 24h, el día laboral depende del ciclo
+        # Este tipo de horario se maneja de forma especial en calcular_retardo
+        return {
+            'hora_entrada': tipo_horario.hora_entrada,
+            'hora_salida': tipo_horario.hora_salida,
+            'es_dia_laboral': True,  # Siempre es laboral, pero cada 48h
+            'tolerancia_minutos': tipo_horario.minutos_tolerancia,
+            'tiene_horario_comida': False,  # Turnos de 24h no tienen comida formal
+            'hora_inicio_comida': None,
+            'hora_fin_comida': None,
+            'tipo_sistema': 'TURNO_24H'
+        }
+    
+    # HORARIO ROTATIVO
+    elif tipo_sistema == TipoSistemaHorario.ROTATIVO:
+        # Buscar la asignación de turno activa para la fecha
+        asignacion = AsignacionTurnoRotativo.objects.filter(
+            empleado=empleado,
+            fecha_inicio__lte=fecha,
+            fecha_fin__gte=fecha,
+            activo=True
+        ).select_related('turno_rotativo').first()
+        
+        if asignacion:
+            turno = asignacion.turno_rotativo
+            return {
+                'hora_entrada': turno.hora_entrada,
+                'hora_salida': turno.hora_salida,
+                'es_dia_laboral': True,
+                'tolerancia_minutos': tipo_horario.minutos_tolerancia,
+                'tiene_horario_comida': tipo_horario.tiene_horario_comida,
+                'hora_inicio_comida': tipo_horario.hora_inicio_comida,
+                'hora_fin_comida': tipo_horario.hora_fin_comida,
+                'tipo_sistema': 'ROTATIVO'
+            }
+        else:
+            # No hay asignación para esta fecha, usar horario base
+            return {
+                'hora_entrada': tipo_horario.hora_entrada,
+                'hora_salida': tipo_horario.hora_salida,
+                'es_dia_laboral': False,  # No tiene turno asignado
+                'tolerancia_minutos': tipo_horario.minutos_tolerancia,
+                'tiene_horario_comida': tipo_horario.tiene_horario_comida,
+                'hora_inicio_comida': tipo_horario.hora_inicio_comida,
+                'hora_fin_comida': tipo_horario.hora_fin_comida,
+                'tipo_sistema': 'ROTATIVO'
+            }
+    
+    # HORARIO PERSONALIZADO POR DÍA
+    elif tipo_sistema == TipoSistemaHorario.PERSONALIZADO or tipo_horario.requiere_horario_por_dia:
+        # Buscar configuración para el día de la semana
+        dia_semana = fecha.weekday()  # 0=Lunes, 6=Domingo
+        
+        horario_dia = HorarioDiaSemana.objects.filter(
+            tipo_horario=tipo_horario,
+            dia_semana=dia_semana
+        ).first()
+        
+        if horario_dia:
+            return {
+                'hora_entrada': horario_dia.hora_entrada,
+                'hora_salida': horario_dia.hora_salida,
+                'es_dia_laboral': horario_dia.es_dia_laboral,
+                'tolerancia_minutos': tipo_horario.minutos_tolerancia,
+                'tiene_horario_comida': bool(horario_dia.hora_inicio_comida and horario_dia.hora_fin_comida),
+                'hora_inicio_comida': horario_dia.hora_inicio_comida,
+                'hora_fin_comida': horario_dia.hora_fin_comida,
+                'tipo_sistema': 'PERSONALIZADO'
+            }
+        else:
+            # No hay configuración para este día, usar horario base o marcar como no laboral
+            return {
+                'hora_entrada': tipo_horario.hora_entrada,
+                'hora_salida': tipo_horario.hora_salida,
+                'es_dia_laboral': fecha.weekday() < 5,  # Default: lunes a viernes
+                'tolerancia_minutos': tipo_horario.minutos_tolerancia,
+                'tiene_horario_comida': tipo_horario.tiene_horario_comida,
+                'hora_inicio_comida': tipo_horario.hora_inicio_comida,
+                'hora_fin_comida': tipo_horario.hora_fin_comida,
+                'tipo_sistema': 'PERSONALIZADO'
+            }
+    
+    # HORARIO FIJO (default)
+    else:
+        return {
+            'hora_entrada': tipo_horario.hora_entrada,
+            'hora_salida': tipo_horario.hora_salida,
+            'es_dia_laboral': fecha.weekday() < 5,  # Lunes a viernes por defecto
+            'tolerancia_minutos': tipo_horario.minutos_tolerancia,
+            'tiene_horario_comida': tipo_horario.tiene_horario_comida,
+            'hora_inicio_comida': tipo_horario.hora_inicio_comida,
+            'hora_fin_comida': tipo_horario.hora_fin_comida,
+            'tipo_sistema': 'FIJO'
+        }
 
 def enviar_email_visitante(visitante):
     """Envía email con QR al visitante y notifica al departamento"""
@@ -213,14 +369,22 @@ def generar_reporte_semanal():
 
     html_reporte += "</body></html>"
 
+    # Generar archivo Excel
+    excel_buffer = generar_excel_reporte_semanal(fecha_inicio, fecha_fin)
+    nombre_excel = f"reporte_semanal_{fecha_inicio.strftime('%Y%m%d')}_{fecha_fin.strftime('%Y%m%d')}.xlsx"
+
     # Enviar email
     email = EmailMultiAlternatives(
         f'Reporte Semanal de Asistencias - Semana del {fecha_inicio.strftime("%d/%m/%Y")}',
-        'Reporte semanal de asistencias. Por favor revisa el contenido HTML.',
+        'Reporte semanal de asistencias. Por favor revisa el contenido HTML y el archivo Excel adjunto con el detalle de todas las checadas.',
         settings.DEFAULT_FROM_EMAIL,
-        [config.email_gerente]
+        [config.email_gerente,'zuly.becerra@loginco.com.mx']
     )
     email.attach_alternative(html_reporte, "text/html")
+    
+    # Adjuntar archivo Excel
+    email.attach(nombre_excel, excel_buffer.read(), 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+    
     email.send(fail_silently=False)
 
 
@@ -344,7 +508,7 @@ def generar_reporte_diario():
         f'Reporte Diario de Asistencia - {hoy.strftime("%d/%m/%Y")}',
         'Reporte diario de asistencias. Por favor revisa el contenido HTML.',
         settings.DEFAULT_FROM_EMAIL,
-        [config.email_gerente]
+        [config.email_gerente,'zuly.becerra@loginco.com.mx']
     )
     email.attach_alternative(html_reporte, "text/html")
     email.send(fail_silently=False)
@@ -560,3 +724,361 @@ def generar_reporte_tiempo_extra_mensual():
         print(f"Reporte guardado en: {ruta_completa}")
     except Exception as e:
         print(f"Error al guardar reporte: {e}")
+
+# ========== FUNCIONES PARA REPORTES EXCEL ==========
+
+from openpyxl import Workbook
+from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+from openpyxl.utils import get_column_letter
+from io import BytesIO
+
+def generar_excel_reporte_semanal(fecha_inicio, fecha_fin):
+    """
+    Genera un archivo Excel con todas las checadas de la semana.
+    
+    Args:
+        fecha_inicio: datetime.date - Inicio del período (lunes)
+        fecha_fin: datetime.date - Fin del período (jueves o viernes)
+    
+    Returns:
+        BytesIO: Buffer con el archivo Excel generado
+    """
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Reporte Semanal"
+    
+    # Estilos
+    header_fill = PatternFill(start_color="3B82F6", end_color="3B82F6", fill_type="solid")
+    header_font = Font(bold=True, color="FFFFFF", size=12)
+    title_font = Font(bold=True, size=14)
+    border = Border(
+        left=Side(style='thin'),
+        right=Side(style='thin'),
+        top=Side(style='thin'),
+        bottom=Side(style='thin')
+    )
+    
+    # Título
+    ws['A1'] = "REPORTE SEMANAL DE ASISTENCIAS"
+    ws['A1'].font = title_font
+    ws.merge_cells('A1:H1')
+    
+    ws['A2'] = f"Período: {fecha_inicio.strftime('%d/%m/%Y')} - {fecha_fin.strftime('%d/%m/%Y')}"
+    ws.merge_cells('A2:H2')
+    
+    # Encabezados
+    headers = ['Fecha', 'Empleado', 'Código', 'Departamento', 'Entrada', 'Salida Comida', 'Entrada Comida', 'Salida']
+    for col, header in enumerate(headers, start=1):
+        cell = ws.cell(row=4, column=col, value=header)
+        cell.fill = header_fill
+        cell.font = header_font
+        cell.alignment = Alignment(horizontal='center', vertical='center')
+        cell.border = border
+    
+    # Obtener empleados activos
+    empleados = Empleado.objects.filter(activo=True).select_related('user', 'departamento').order_by('codigo_empleado')
+    
+    row = 5
+    fecha_actual = fecha_inicio
+    
+    # Iterar por cada fecha en el rango
+    while fecha_actual <= fecha_fin:
+        for empleado in empleados:
+            # Obtener asistencias del día
+            asistencias = Asistencia.objects.filter(
+                empleado=empleado,
+                fecha=fecha_actual
+            ).order_by('hora')
+            
+            if asistencias.exists():
+                # Organizar por tipo de movimiento
+                checadas = {
+                    'ENTRADA': None,
+                    'SALIDA_COMIDA': None,
+                    'ENTRADA_COMIDA': None,
+                    'SALIDA': None
+                }
+                
+                for asist in asistencias:
+                    checadas[asist.tipo_movimiento] = asist
+                
+                # Escribir fila
+                ws.cell(row=row, column=1, value=fecha_actual.strftime('%d/%m/%Y'))
+                ws.cell(row=row, column=2, value=empleado.user.get_full_name())
+                ws.cell(row=row, column=3, value=empleado.codigo_empleado)
+                ws.cell(row=row, column=4, value=empleado.departamento.nombre if empleado.departamento else 'N/A')
+                
+                # Entrada
+                if checadas['ENTRADA']:
+                    hora_str = checadas['ENTRADA'].hora.strftime('%H:%M')
+                    if checadas['ENTRADA'].retardo:
+                        hora_str += f" (Retardo: {checadas['ENTRADA'].minutos_retardo} min)"
+                    ws.cell(row=row, column=5, value=hora_str)
+                
+                # Salida a comida
+                if checadas['SALIDA_COMIDA']:
+                    ws.cell(row=row, column=6, value=checadas['SALIDA_COMIDA'].hora.strftime('%H:%M'))
+                
+                # Entrada de comida
+                if checadas['ENTRADA_COMIDA']:
+                    ws.cell(row=row, column=7, value=checadas['ENTRADA_COMIDA'].hora.strftime('%H:%M'))
+                
+                # Salida
+                if checadas['SALIDA']:
+                    ws.cell(row=row, column=8, value=checadas['SALIDA'].hora.strftime('%H:%M'))
+                
+                # Aplicar bordes
+                for col in range(1, 9):
+                    ws.cell(row=row, column=col).border = border
+                
+                row += 1
+        
+        fecha_actual += timedelta(days=1)
+    
+    # Ajustar ancho de columnas
+    ws.column_dimensions['A'].width = 12
+    ws.column_dimensions['B'].width = 30
+    ws.column_dimensions['C'].width = 12
+    ws.column_dimensions['D'].width = 20
+    ws.column_dimensions['E'].width = 25
+    ws.column_dimensions['F'].width = 15
+    ws.column_dimensions['G'].width = 15
+    ws.column_dimensions['H'].width = 12
+    
+    # Guardar en BytesIO
+    buffer = BytesIO()
+    wb.save(buffer)
+    buffer.seek(0)
+    return buffer
+
+def generar_excel_reporte_mensual(mes, anio):
+    """
+    Genera un archivo Excel detallado del reporte mensual.
+    
+    Args:
+        mes: int - Mes (1-12)
+        anio: int - Año
+    
+    Returns:
+        BytesIO: Buffer con el archivo Excel generado
+    """
+    wb = Workbook()
+    
+    # Hoja 1: Resumen por empleado
+    ws_resumen = wb.active
+    ws_resumen.title = "Resumen"
+    
+    # Hoja 2: Detalle de asistencias
+    ws_detalle = wb.create_sheet("Detalle de Asistencias")
+    
+    # Hoja 3: Retardos y faltas
+    ws_retardos = wb.create_sheet("Retardos y Faltas")
+    
+    # Estilos
+    header_fill = PatternFill(start_color="10B981", end_color="10B981", fill_type="solid")
+    header_font = Font(bold=True, color="FFFFFF", size=11)
+    title_font = Font(bold=True, size=14)
+    border = Border(
+        left=Side(style='thin'),
+        right=Side(style='thin'),
+        top=Side(style='thin'),
+        bottom=Side(style='thin')
+    )
+    
+    # Obtener nombre del mes
+    from calendar import month_name
+    import locale
+    try:
+        locale.setlocale(locale.LC_TIME, 'es_ES.UTF-8')
+    except:
+        pass
+    nombre_mes = month_name[mes] if mes <= 12 else str(mes)
+    
+    # ===== HOJA 1: RESUMEN =====
+    ws_resumen['A1'] = f"REPORTE MENSUAL DE ASISTENCIAS - {nombre_mes.upper()} {anio}"
+    ws_resumen['A1'].font = title_font
+    ws_resumen.merge_cells('A1:H1')
+    
+    headers_resumen = ['Empleado', 'Código', 'Departamento', 'Días Asistidos', 'Retardos', 'Min. Retardo', 'Faltas', 'Permisos']
+    for col, header in enumerate(headers_resumen, start=1):
+        cell = ws_resumen.cell(row=3, column=col, value=header)
+        cell.fill = header_fill
+        cell.font = header_font
+        cell.alignment = Alignment(horizontal='center', vertical='center')
+        cell.border = border
+    
+    # Obtener datos
+    from .models import SolicitudPermiso, SolicitudVacaciones, EstadoSolicitud
+    empleados = Empleado.objects.filter(activo=True).select_related('user', 'departamento').order_by('codigo_empleado')
+    
+    # Calcular días laborales del mes
+    from calendar import monthrange
+    dias_mes = monthrange(anio, mes)[1]
+    fecha_inicio_mes = date(anio, mes, 1)
+    fecha_fin_mes = date(anio, mes, dias_mes)
+    
+    row_resumen = 4
+    for empleado in empleados:
+        asistencias = Asistencia.objects.filter(
+            empleado=empleado,
+            fecha__month=mes,
+            fecha__year=anio,
+            tipo_movimiento=TipoMovimiento.ENTRADA
+        )
+        
+        dias_asistidos = asistencias.values('fecha').distinct().count()
+        retardos = asistencias.filter(retardo=True).count()
+        total_min_retardo = sum(asistencias.filter(retardo=True).values_list('minutos_retardo', flat=True))
+        
+        # Contar permisos aprobados
+        permisos_dias = SolicitudPermiso.objects.filter(
+            empleado=empleado,
+            fecha_inicio__lte=fecha_fin_mes,
+            fecha_fin__gte=fecha_inicio_mes,
+            estado__in=[EstadoSolicitud.APROBADO_JEFE, EstadoSolicitud.APROBADO_GERENCIA]
+        ).count()
+        
+        # Calcular días laborales esperados
+        horario = obtener_horario_esperado(empleado, fecha_inicio_mes)
+        if horario['tipo_sistema'] == 'TURNO_24H':
+            # Turnos 24h: aproximadamente 15 turnos al mes
+            dias_esperados = 15
+        else:
+            # Contar días laborales (lunes a viernes por defecto)
+            dias_esperados = 0
+            fecha_temp = fecha_inicio_mes
+            while fecha_temp <= fecha_fin_mes:
+                if fecha_temp.weekday() < 5:  # Lunes a viernes
+                    dias_esperados += 1
+                fecha_temp += timedelta(days=1)
+        
+        faltas = dias_esperados - dias_asistidos - permisos_dias
+        if faltas < 0:
+            faltas = 0
+        
+        ws_resumen.cell(row=row_resumen, column=1, value=empleado.user.get_full_name())
+        ws_resumen.cell(row=row_resumen, column=2, value=empleado.codigo_empleado)
+        ws_resumen.cell(row=row_resumen, column=3, value=empleado.departamento.nombre if empleado.departamento else 'N/A')
+        ws_resumen.cell(row=row_resumen, column=4, value=dias_asistidos)
+        ws_resumen.cell(row=row_resumen, column=5, value=retardos)
+        ws_resumen.cell(row=row_resumen, column=6, value=total_min_retardo)
+        ws_resumen.cell(row=row_resumen, column=7, value=faltas)
+        ws_resumen.cell(row=row_resumen, column=8, value=permisos_dias)
+        
+        for col in range(1, 9):
+            ws_resumen.cell(row=row_resumen, column=col).border = border
+        
+        row_resumen += 1
+    
+    # Ajustar anchos
+    ws_resumen.column_dimensions['A'].width = 30
+    ws_resumen.column_dimensions['B'].width = 12
+    ws_resumen.column_dimensions['C'].width = 20
+    for col in ['D', 'E', 'F', 'G', 'H']:
+        ws_resumen.column_dimensions[col].width = 15
+    
+    # ===== HOJA 2: DETALLE DE ASISTENCIAS =====
+    ws_detalle['A1'] = "DETALLE DE TODAS LAS ASISTENCIAS"
+    ws_detalle['A1'].font = title_font
+    ws_detalle.merge_cells('A1:G1')
+    
+    headers_detalle = ['Fecha', 'Empleado', 'Código', 'Tipo Movimiento', 'Hora', 'Retardo', 'Min. Retardo']
+    for col, header in enumerate(headers_detalle, start=1):
+        cell = ws_detalle.cell(row=3, column=col, value=header)
+        cell.fill = header_fill
+        cell.font = header_font
+        cell.alignment = Alignment(horizontal='center', vertical='center')
+        cell.border = border
+    
+    # Obtener todas las asistencias del mes
+    asistencias_mes = Asistencia.objects.filter(
+        fecha__month=mes,
+        fecha__year=anio
+    ).select_related('empleado', 'empleado__user').order_by('fecha', 'empleado__codigo_empleado', 'hora')
+    
+    row_detalle = 4
+    for asist in asistencias_mes:
+        ws_detalle.cell(row=row_detalle, column=1, value=asist.fecha.strftime('%d/%m/%Y'))
+        ws_detalle.cell(row=row_detalle, column=2, value=asist.empleado.user.get_full_name())
+        ws_detalle.cell(row=row_detalle, column=3, value=asist.empleado.codigo_empleado)
+        ws_detalle.cell(row=row_detalle, column=4, value=asist.get_tipo_movimiento_display())
+        ws_detalle.cell(row=row_detalle, column=5, value=asist.hora.strftime('%H:%M:%S'))
+        ws_detalle.cell(row=row_detalle, column=6, value='Sí' if asist.retardo else 'No')
+        ws_detalle.cell(row=row_detalle, column=7, value=asist.minutos_retardo if asist.retardo else 0)
+        
+        for col in range(1, 8):
+            ws_detalle.cell(row=row_detalle, column=col).border = border
+        
+        row_detalle += 1
+    
+    # Ajustar anchos
+    for col in ['A', 'B', 'C', 'D', 'E']:
+        ws_detalle.column_dimensions[col].width = 20
+    ws_detalle.column_dimensions['F'].width = 12
+    ws_detalle.column_dimensions['G'].width = 15
+    
+    # ===== HOJA 3: RETARDOS Y FALTAS =====
+    ws_retardos['A1'] = "EMPLEADOS CON RETARDOS Y FALTAS"
+    ws_retardos['A1'].font = title_font
+    ws_retardos.merge_cells('A1:F1')
+    
+    headers_retardos = ['Empleado', 'Código', 'Departamento', 'Total Retardos', 'Total Min.', 'Faltas']
+    for col, header in enumerate(headers_retardos, start=1):
+        cell = ws_retardos.cell(row=3, column=col, value=header)
+        cell.fill = PatternFill(start_color="EF4444", end_color="EF4444", fill_type="solid")
+        cell.font = header_font
+        cell.alignment = Alignment(horizontal='center', vertical='center')
+        cell.border = border
+    
+    row_retardos = 4
+    for empleado in empleados:
+        asistencias = Asistencia.objects.filter(
+            empleado=empleado,
+            fecha__month=mes,
+            fecha__year=anio,
+            tipo_movimiento=TipoMovimiento.ENTRADA
+        )
+        
+        retardos = asistencias.filter(retardo=True)
+        total_retardos = retardos.count()
+        total_min = sum(retardos.values_list('minutos_retardo', flat=True))
+        
+        dias_asistidos = asistencias.values('fecha').distinct().count()
+        
+        # Calcular faltas
+        horario = obtener_horario_esperado(empleado, fecha_inicio_mes)
+        if horario['tipo_sistema'] == 'TURNO_24H':
+            dias_esperados = 15
+        else:
+            dias_esperados = sum(1 for d in range(dias_mes) if date(anio, mes, d+1).weekday() < 5)
+        
+        faltas = dias_esperados - dias_asistidos
+        if faltas < 0:
+            faltas = 0
+        
+        # Solo incluir empleados con retardos o faltas
+        if total_retardos > 0 or faltas > 0:
+            ws_retardos.cell(row=row_retardos, column=1, value=empleado.user.get_full_name())
+            ws_retardos.cell(row=row_retardos, column=2, value=empleado.codigo_empleado)
+            ws_retardos.cell(row=row_retardos, column=3, value=empleado.departamento.nombre if empleado.departamento else 'N/A')
+            ws_retardos.cell(row=row_retardos, column=4, value=total_retardos)
+            ws_retardos.cell(row=row_retardos, column=5, value=total_min)
+            ws_retardos.cell(row=row_retardos, column=6, value=faltas)
+            
+            for col in range(1, 7):
+                ws_retardos.cell(row=row_retardos, column=col).border = border
+            
+            row_retardos += 1
+    
+    # Ajustar anchos
+    ws_retardos.column_dimensions['A'].width = 30
+    ws_retardos.column_dimensions['B'].width = 12
+    ws_retardos.column_dimensions['C'].width = 20
+    for col in ['D', 'E', 'F']:
+        ws_retardos.column_dimensions[col].width = 15
+    
+    # Guardar en BytesIO
+    buffer = BytesIO()
+    wb.save(buffer)
+    buffer.seek(0)
+    return buffer
