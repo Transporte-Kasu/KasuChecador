@@ -364,17 +364,13 @@ def dashboard_view(request):
                 'retardos': retardos
             })
 
-    visitas_hoy = Visitante.objects.filter(
-        fecha_visita=hoy
-    ).select_related('departamento_visita').order_by('-hora_visita')
-
     context = {
         'total_empleados': total_empleados,
         'llegaron_hoy': llegaron_hoy,
         'retardos_hoy': retardos_hoy,
         'empleados_retardos': empleados_retardos,
-        'visitas_hoy': visitas_hoy,
         'fecha': hoy,
+        'active_nav': 'dashboard',
     }
 
     return render(request, 'attendance/dashboard.html', context)
@@ -441,9 +437,92 @@ def reporte_mensual_view(request, mes=None, anio=None):
         'empleados_data': empleados_data.values(),
         'total_retardos': total_retardos,
         'years_disponibles': range(2024, datetime.now().year + 1), # Generacion de years
+        'active_nav': 'reportes',
     }
 
     return render(request, 'attendance/reporte_mensual.html', context)
+
+# Lista de visitantes
+def visitantes_list_view(request):
+    """Lista de todos los visitantes"""
+    visitantes = Visitante.objects.select_related(
+        'departamento_visita'
+    ).order_by('-fecha_visita', '-hora_visita')
+
+    context = {
+        'visitantes': visitantes,
+        'active_nav': 'visitantes',
+    }
+    return render(request, 'attendance/visitantes_list.html', context)
+
+# ========== MÓDULO DE SEGURIDAD ==========
+
+def seguridad_visitantes_view(request):
+    """Panel de seguridad: listado de visitantes del día con registros de entrada/salida"""
+    hoy = timezone.now().date()
+
+    visitantes_hoy = Visitante.objects.filter(
+        fecha_visita=hoy
+    ).select_related('departamento_visita').order_by('-hora_visita')
+
+    # Agregar info de registro de entrada/salida a cada visitante
+    visitas_data = []
+    for visitante in visitantes_hoy:
+        registro = RegistroVisita.objects.filter(visitante=visitante).order_by('-hora_entrada').first()
+        visitas_data.append({
+            'visitante': visitante,
+            'hora_entrada': registro.hora_entrada if registro else None,
+            'hora_salida': registro.hora_salida if registro else None,
+            'activo': registro and not registro.hora_salida if registro else False,
+        })
+
+    context = {
+        'visitas_data': visitas_data,
+        'fecha': hoy,
+        'total_visitas': len(visitas_data),
+    }
+    return render(request, 'attendance/seguridad_visitantes.html', context)
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def verificar_visitante_qr(request):
+    """Endpoint AJAX para verificar datos de un visitante por QR (solo consulta)"""
+    try:
+        data = json.loads(request.body)
+        qr_code = data.get('qr_code', '').strip()
+
+        if not qr_code:
+            return JsonResponse({'error': 'Código QR vacío'}, status=400)
+
+        # Extraer UUID del código QR
+        uuid_str = qr_code.replace('VISITANTE:', '') if qr_code.startswith('VISITANTE:') else qr_code
+
+        try:
+            visitante = Visitante.objects.select_related('departamento_visita').get(qr_uuid=uuid_str)
+        except (Visitante.DoesNotExist, ValueError):
+            return JsonResponse({'error': 'Visitante no encontrado'}, status=404)
+
+        # Obtener último registro de visita
+        registro = RegistroVisita.objects.filter(visitante=visitante).order_by('-hora_entrada').first()
+
+        response_data = {
+            'nombre': visitante.nombre,
+            'empresa': visitante.empresa or 'N/A',
+            'telefono': visitante.telefono,
+            'departamento': visitante.departamento_visita.nombre,
+            'motivo': visitante.motivo,
+            'fecha_visita': visitante.fecha_visita.strftime('%d/%m/%Y'),
+            'hora_visita': visitante.hora_visita.strftime('%H:%M'),
+            'qr_activo': visitante.qr_activo,
+            'hora_entrada': registro.hora_entrada.strftime('%d/%m/%Y %H:%M') if registro else None,
+            'hora_salida': registro.hora_salida.strftime('%d/%m/%Y %H:%M') if registro and registro.hora_salida else None,
+            'estado': 'Activo' if (registro and not registro.hora_salida) else ('Finalizado' if (registro and registro.hora_salida) else 'Sin registro'),
+        }
+
+        return JsonResponse(response_data)
+
+    except json.JSONDecodeError:
+        return JsonResponse({'error': 'Datos inválidos'}, status=400)
 
 # ========== ASIGNACIÓN DE TURNOS MENSUAL ==========
 
@@ -576,6 +655,7 @@ def asignacion_turnos_mensual(request, mes=None, anio=None):
         'anio_anterior': anio_anterior,
         'mes_siguiente': mes_siguiente,
         'anio_siguiente': anio_siguiente,
+        'active_nav': 'turnos',
     }
     
     return render(request, 'attendance/asignacion_turnos.html', context)

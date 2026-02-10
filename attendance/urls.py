@@ -14,6 +14,13 @@ urlpatterns = [
     path('visitante/registro/', views.VisitanteCreateView.as_view(), name='visitante_registro'),
     path('visitante/exito/', views.visitante_exito, name='visitante_exito'),
 
+    # Lista de visitantes
+    path('visitantes/', views.visitantes_list_view, name='visitantes_list'),
+
+    # Módulo de seguridad (visitantes)
+    path('seguridad/', views.seguridad_visitantes_view, name='seguridad_visitantes'),
+    path('seguridad/verificar-qr/', views.verificar_visitante_qr, name='verificar_visitante_qr'),
+
     # Dashboard y reportes (requiere autenticación)
     path('dashboard/', views.dashboard_view, name='dashboard'),
     path('reporte/mensual/', views.reporte_mensual_view, name='reporte_mensual'),

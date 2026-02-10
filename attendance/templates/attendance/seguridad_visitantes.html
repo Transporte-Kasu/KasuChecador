@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Control de Visitantes - Seguridad</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 min-h-screen">
+    <!-- Header simple sin nav de gestión -->
+    <header class="bg-gradient-to-r from-slate-700 to-slate-900 shadow-lg">
+        <div class="px-4 py-4 flex items-center justify-between">
+            <div class="flex items-center space-x-3">
+                <svg class="w-8 h-8 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"></path>
+                </svg>
+                <h1 class="text-xl font-bold text-white">Control de Visitantes</h1>
+            </div>
+            <div class="text-right">
+                <p class="text-sm text-slate-300">{{ fecha|date:"d/m/Y" }}</p>
+                <p class="text-xs text-slate-400" id="reloj"></p>
+            </div>
+        </div>
+    </header>
+
+    <main class="px-4 py-4 max-w-2xl mx-auto space-y-4">
+        <!-- Sección: Verificar QR -->
+        <div class="bg-white rounded-2xl shadow-md p-5">
+            <h2 class="text-lg font-bold text-gray-800 mb-3 flex items-center">
+                <svg class="w-6 h-6 text-blue-500 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z"></path>
+                </svg>
+                Verificar QR
+            </h2>
+            <div class="flex space-x-2">
+                <input type="text" id="qr-input" placeholder="Escanea o ingresa el código QR"
+                       class="flex-1 px-4 py-3 border-2 border-gray-200 rounded-xl text-base focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                       autocomplete="off" autofocus>
+                <button id="btn-verificar" onclick="verificarQR()"
+                        class="bg-blue-600 hover:bg-blue-700 text-white font-semibold px-5 py-3 rounded-xl transition active:scale-95">
+                    Verificar
+                </button>
+            </div>
+
+            <!-- Resultado del QR -->
+            <div id="qr-resultado" class="hidden mt-4">
+                <!-- Se llena dinámicamente -->
+            </div>
+            <div id="qr-error" class="hidden mt-4 bg-red-50 border border-red-200 rounded-xl p-4 text-red-700 text-sm">
+            </div>
+        </div>
+
+        <!-- Sección: Visitas del Día -->
+        <div class="bg-white rounded-2xl shadow-md p-5">
+            <div class="flex items-center justify-between mb-3">
+                <h2 class="text-lg font-bold text-gray-800 flex items-center">
+                    <svg class="w-6 h-6 text-purple-500 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path>
+                    </svg>
+                    Visitas del Día
+                </h2>
+                <span class="bg-slate-100 text-slate-700 text-sm font-semibold px-3 py-1 rounded-full">
+                    {{ total_visitas }}
+                </span>
+            </div>
+
+            <div id="visitas-container" class="space-y-3">
+                {% if visitas_data %}
+                    {% for item in visitas_data %}
+                    <div class="border border-gray-200 rounded-xl p-4 hover:shadow-sm transition">
+                        <div class="flex items-start justify-between">
+                            <div class="flex-1 min-w-0">
+                                <p class="font-semibold text-gray-900 text-base truncate">{{ item.visitante.nombre }}</p>
+                                <p class="text-sm text-gray-500 truncate">{{ item.visitante.empresa|default:"Sin empresa" }}</p>
+                            </div>
+                            {% if item.activo %}
+                                <span class="ml-2 px-3 py-1 text-xs font-semibold rounded-full bg-green-100 text-green-700 whitespace-nowrap">
+                                    Activo
+                                </span>
+                            {% elif item.hora_salida %}
+                                <span class="ml-2 px-3 py-1 text-xs font-semibold rounded-full bg-gray-100 text-gray-600 whitespace-nowrap">
+                                    Finalizado
+                                </span>
+                            {% else %}
+                                <span class="ml-2 px-3 py-1 text-xs font-semibold rounded-full bg-yellow-100 text-yellow-700 whitespace-nowrap">
+                                    Sin registro
+                                </span>
+                            {% endif %}
+                        </div>
+                        <div class="mt-2 grid grid-cols-2 gap-2 text-sm">
+                            <div>
+                                <span class="text-gray-400">Departamento</span>
+                                <p class="text-gray-700 font-medium">{{ item.visitante.departamento_visita.nombre }}</p>
+                            </div>
+                            <div>
+                                <span class="text-gray-400">Hora programada</span>
+                                <p class="text-gray-700 font-medium">{{ item.visitante.hora_visita|time:"H:i" }}</p>
+                            </div>
+                            <div>
+                                <span class="text-gray-400">Entrada</span>
+                                <p class="text-gray-700 font-medium">
+                                    {% if item.hora_entrada %}
+                                        {{ item.hora_entrada|time:"H:i" }}
+                                    {% else %}
+                                        <span class="text-gray-300">-</span>
+                                    {% endif %}
+                                </p>
+                            </div>
+                            <div>
+                                <span class="text-gray-400">Salida</span>
+                                <p class="text-gray-700 font-medium">
+                                    {% if item.hora_salida %}
+                                        {{ item.hora_salida|time:"H:i" }}
+                                    {% else %}
+                                        <span class="text-gray-300">-</span>
+                                    {% endif %}
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                {% else %}
+                    <div class="text-center py-8 text-gray-400">
+                        <svg class="w-14 h-14 mx-auto mb-3 text-gray-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4"></path>
+                        </svg>
+                        <p class="text-base">No hay visitas registradas hoy</p>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </main>
+
+    <script>
+        // Reloj en tiempo real
+        function actualizarReloj() {
+            const ahora = new Date();
+            document.getElementById('reloj').textContent = ahora.toLocaleTimeString('es-MX', {hour: '2-digit', minute: '2-digit', second: '2-digit'});
+        }
+        actualizarReloj();
+        setInterval(actualizarReloj, 1000);
+
+        // Verificar QR
+        function verificarQR() {
+            const input = document.getElementById('qr-input');
+            const qrCode = input.value.trim();
+            if (!qrCode) return;
+
+            const resultadoDiv = document.getElementById('qr-resultado');
+            const errorDiv = document.getElementById('qr-error');
+            resultadoDiv.classList.add('hidden');
+            errorDiv.classList.add('hidden');
+
+            fetch("{% url 'verificar_visitante_qr' %}", {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({qr_code: qrCode})
+            })
+            .then(resp => resp.json().then(data => ({ok: resp.ok, data})))
+            .then(({ok, data}) => {
+                if (!ok) {
+                    errorDiv.textContent = data.error || 'Error al verificar';
+                    errorDiv.classList.remove('hidden');
+                    return;
+                }
+
+                const estadoColor = data.estado === 'Activo' ? 'bg-green-100 text-green-700' :
+                                    data.estado === 'Finalizado' ? 'bg-gray-100 text-gray-600' :
+                                    'bg-yellow-100 text-yellow-700';
+                const qrColor = data.qr_activo ? 'text-green-600' : 'text-red-500';
+                const qrTexto = data.qr_activo ? 'QR Activo' : 'QR Inactivo';
+
+                resultadoDiv.innerHTML = `
+                    <div class="border-2 border-blue-200 bg-blue-50 rounded-xl p-4">
+                        <div class="flex items-start justify-between mb-3">
+                            <div>
+                                <p class="font-bold text-gray-900 text-lg">${data.nombre}</p>
+                                <p class="text-sm text-gray-500">${data.empresa}</p>
+                            </div>
+                            <span class="px-3 py-1 text-xs font-semibold rounded-full ${estadoColor}">${data.estado}</span>
+                        </div>
+                        <div class="grid grid-cols-2 gap-3 text-sm">
+                            <div>
+                                <span class="text-gray-400">Departamento</span>
+                                <p class="text-gray-700 font-medium">${data.departamento}</p>
+                            </div>
+                            <div>
+                                <span class="text-gray-400">Motivo</span>
+                                <p class="text-gray-700 font-medium">${data.motivo}</p>
+                            </div>
+                            <div>
+                                <span class="text-gray-400">Telefono</span>
+                                <p class="text-gray-700 font-medium">${data.telefono}</p>
+                            </div>
+                            <div>
+                                <span class="text-gray-400">Estado QR</span>
+                                <p class="font-medium ${qrColor}">${qrTexto}</p>
+                            </div>
+                            <div>
+                                <span class="text-gray-400">Entrada</span>
+                                <p class="text-gray-700 font-medium">${data.hora_entrada || '-'}</p>
+                            </div>
+                            <div>
+                                <span class="text-gray-400">Salida</span>
+                                <p class="text-gray-700 font-medium">${data.hora_salida || '-'}</p>
+                            </div>
+                        </div>
+                    </div>`;
+                resultadoDiv.classList.remove('hidden');
+            })
+            .catch(() => {
+                errorDiv.textContent = 'Error de conexión';
+                errorDiv.classList.remove('hidden');
+            });
+
+            input.value = '';
+            input.focus();
+        }
+
+        // Enter para verificar
+        document.getElementById('qr-input').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                verificarQR();
+            }
+        });
+
+        // Auto-refresh de la página cada 30 segundos
+        setTimeout(function() {
+            location.reload();
+        }, 30000);
+    </script>
+</body>
+</html>
