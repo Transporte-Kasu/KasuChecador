@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Control de Visitantes - Seguridad</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
 </head>
 <body class="bg-gray-100 min-h-screen">
     <!-- Header simple sin nav de gestión -->
@@ -36,10 +37,28 @@
                 <input type="text" id="qr-input" placeholder="Escanea o ingresa el código QR"
                        class="flex-1 px-4 py-3 border-2 border-gray-200 rounded-xl text-base focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
                        autocomplete="off" autofocus>
+                <button id="btn-camara" onclick="toggleCamara()" title="Escanear con cámara"
+                        class="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold px-4 py-3 rounded-xl transition active:scale-95">
+                    <svg id="icono-camara" class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"></path>
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                    </svg>
+                    <svg id="icono-cerrar" class="w-6 h-6 hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                    </svg>
+                </button>
                 <button id="btn-verificar" onclick="verificarQR()"
                         class="bg-blue-600 hover:bg-blue-700 text-white font-semibold px-5 py-3 rounded-xl transition active:scale-95">
                     Verificar
                 </button>
+            </div>
+
+            <!-- Visor de cámara QR -->
+            <div id="camara-container" class="hidden mt-4">
+                <div class="relative bg-black rounded-xl overflow-hidden">
+                    <div id="reader" style="width: 100%;"></div>
+                </div>
+                <p class="text-center text-sm text-gray-400 mt-2">Apunta la cámara al código QR del visitante</p>
             </div>
 
             <!-- Resultado del QR -->
@@ -225,9 +244,98 @@
             }
         });
 
-        // Auto-refresh de la página cada 30 segundos
-        setTimeout(function() {
-            location.reload();
+        // ===== Escáner de cámara QR =====
+        let html5QrCode = null;
+        let camaraActiva = false;
+
+        function toggleCamara() {
+            if (camaraActiva) {
+                detenerCamara();
+            } else {
+                iniciarCamara();
+            }
+        }
+
+        function iniciarCamara() {
+            const container = document.getElementById('camara-container');
+            const iconoCamara = document.getElementById('icono-camara');
+            const iconoCerrar = document.getElementById('icono-cerrar');
+            const btnCamara = document.getElementById('btn-camara');
+
+            container.classList.remove('hidden');
+            iconoCamara.classList.add('hidden');
+            iconoCerrar.classList.remove('hidden');
+            btnCamara.classList.remove('bg-emerald-600', 'hover:bg-emerald-700');
+            btnCamara.classList.add('bg-red-500', 'hover:bg-red-600');
+
+            html5QrCode = new Html5Qrcode("reader");
+
+            const config = {
+                fps: 10,
+                qrbox: { width: 220, height: 220 },
+                aspectRatio: 1.0
+            };
+
+            html5QrCode.start(
+                { facingMode: "environment" },
+                config,
+                function onScanSuccess(decodedText) {
+                    document.getElementById('qr-input').value = decodedText;
+                    detenerCamara();
+                    verificarQR();
+                },
+                function onScanFailure() {}
+            ).then(function() {
+                camaraActiva = true;
+            }).catch(function(err) {
+                // Si no hay cámara trasera, intentar con la frontal
+                html5QrCode.start(
+                    { facingMode: "user" },
+                    config,
+                    function onScanSuccess(decodedText) {
+                        document.getElementById('qr-input').value = decodedText;
+                        detenerCamara();
+                        verificarQR();
+                    },
+                    function onScanFailure() {}
+                ).then(function() {
+                    camaraActiva = true;
+                }).catch(function(err2) {
+                    container.classList.add('hidden');
+                    iconoCamara.classList.remove('hidden');
+                    iconoCerrar.classList.add('hidden');
+                    btnCamara.classList.add('bg-emerald-600', 'hover:bg-emerald-700');
+                    btnCamara.classList.remove('bg-red-500', 'hover:bg-red-600');
+
+                    const errorDiv = document.getElementById('qr-error');
+                    errorDiv.textContent = 'No se pudo acceder a la cámara. Verifica los permisos del navegador.';
+                    errorDiv.classList.remove('hidden');
+                });
+            });
+        }
+
+        function detenerCamara() {
+            if (html5QrCode && camaraActiva) {
+                html5QrCode.stop().then(function() {
+                    html5QrCode.clear();
+                }).catch(function() {});
+            }
+            camaraActiva = false;
+
+            document.getElementById('camara-container').classList.add('hidden');
+            document.getElementById('icono-camara').classList.remove('hidden');
+            document.getElementById('icono-cerrar').classList.add('hidden');
+
+            const btnCamara = document.getElementById('btn-camara');
+            btnCamara.classList.add('bg-emerald-600', 'hover:bg-emerald-700');
+            btnCamara.classList.remove('bg-red-500', 'hover:bg-red-600');
+        }
+
+        // Auto-refresh solo si la cámara no está activa
+        setInterval(function() {
+            if (!camaraActiva) {
+                location.reload();
+            }
         }, 30000);
     </script>
 </body>
