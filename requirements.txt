@@ -14,3 +14,4 @@ sqlparse==0.5.3
 tzdata==2025.2
 whitenoise==6.8.1
 openpyxl==3.1.5
+django-apscheduler==0.7.0

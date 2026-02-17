@@ -50,6 +50,7 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'storages',
+    'django_apscheduler',
     'attendance',
 ]
 
@@ -189,9 +190,10 @@ EMAIL_HOST_USER = 'apikey'  # Cambiar
 EMAIL_HOST_PASSWORD = env.str('EMAIL_HOST_PASSWORD')  # Usar App Password de Gmail
 DEFAULT_FROM_EMAIL = 'checadorKasu@transportekasu.com.mx'
 
-# Celery deshabilitado. Los reportes periódicos se ejecutan vía GitHub Actions.
-# CELERY_BROKER_URL = ''
-# CELERY_RESULT_BACKEND = ''
+# django-apscheduler: reportes periódicos programados dentro del proceso Django
+APSCHEDULER_DATETIME_FORMAT = "N j, Y, f:s a"
+APSCHEDULER_RUN_NOW_TIMEOUT = 25  # seconds
+SCHEDULER_DEFAULT = True
 
 # Seguridad
 SECURE_BROWSER_XSS_FILTER = True
