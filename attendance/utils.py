@@ -835,6 +835,76 @@ def generar_reporte_tiempo_extra_mensual(origen=OrigenEnvio.AUTOMATICO, enviado_
         enviado_por=enviado_por, exitoso=True
     )
 
+
+def generar_reporte_mensual(mes=None, anio=None, origen=OrigenEnvio.AUTOMATICO, enviado_por=None):
+    """Genera el reporte mensual de asistencias en Excel, lo guarda en red si aplica y lo envía por email"""
+    hoy = timezone.now().date()
+
+    if mes is None:
+        primer_dia_mes_actual = hoy.replace(day=1)
+        ultimo_dia_mes_anterior = primer_dia_mes_actual - timedelta(days=1)
+        mes = ultimo_dia_mes_anterior.month
+        anio = ultimo_dia_mes_anterior.year
+    elif anio is None:
+        anio = hoy.year
+
+    periodo_descripcion = f"{mes:02d}/{anio}"
+
+    config = ConfiguracionSistema.objects.first()
+    if not config:
+        return registrar_envio_reporte(
+            TipoReporte.MENSUAL, periodo_descripcion, [], origen,
+            enviado_por=enviado_por, exitoso=False, error='No se encontró configuración del sistema'
+        )
+
+    destinatarios = obtener_destinatarios_reporte(TipoReporte.MENSUAL)
+    if not destinatarios:
+        return registrar_envio_reporte(
+            TipoReporte.MENSUAL, periodo_descripcion, [], origen,
+            enviado_por=enviado_por, exitoso=False, error='Sin destinatarios configurados'
+        )
+
+    excel_buffer = generar_excel_reporte_mensual(mes, anio)
+    nombre_excel = f"reporte_mensual_{anio}_{mes:02d}.xlsx"
+
+    if config.ruta_red_reportes:
+        ruta_completa = os.path.join(config.ruta_red_reportes, nombre_excel)
+        try:
+            with open(ruta_completa, 'wb') as f:
+                f.write(excel_buffer.getvalue())
+        except Exception as e:
+            print(f"Error al guardar reporte mensual en red: {e}")
+
+    excel_buffer.seek(0)
+
+    email = EmailMessage(
+        subject=f'Reporte Mensual de Asistencias - {mes:02d}/{anio}',
+        body=(
+            f'Reporte mensual de asistencias del período {mes:02d}/{anio}.\n\n'
+            'El archivo Excel adjunto contiene:\n'
+            '- Hoja 1: Resumen por empleado (días asistidos, retardos, faltas, permisos)\n'
+            '- Hoja 2: Detalle de todas las asistencias del mes\n'
+            '- Hoja 3: Empleados con retardos y faltas\n\n'
+            'Este reporte se genera automáticamente el día 1 de cada mes.'
+        ),
+        from_email=settings.DEFAULT_FROM_EMAIL,
+        to=destinatarios
+    )
+    email.attach(nombre_excel, excel_buffer.read(), 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+
+    try:
+        email.send(fail_silently=False)
+    except Exception as e:
+        return registrar_envio_reporte(
+            TipoReporte.MENSUAL, periodo_descripcion, destinatarios, origen,
+            enviado_por=enviado_por, exitoso=False, error=str(e)
+        )
+
+    return registrar_envio_reporte(
+        TipoReporte.MENSUAL, periodo_descripcion, destinatarios, origen,
+        enviado_por=enviado_por, exitoso=True
+    )
+
 # ========== FUNCIONES PARA REPORTES EXCEL ==========
 
 from openpyxl import Workbook

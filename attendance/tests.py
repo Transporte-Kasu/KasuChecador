@@ -246,3 +246,54 @@ class GenerarReporteTiempoExtraMensualTest(TestCase):
 
         self.assertTrue(resultado.exitoso)
         self.assertEqual(len(mail.outbox), 1)
+
+
+class GenerarReporteMensualTest(TestCase):
+    def test_sin_destinatarios_registra_envio_fallido(self):
+        from attendance.models import ConfiguracionSistema, TipoReporte, EnvioReporte
+        from attendance.utils import generar_reporte_mensual
+
+        ConfiguracionSistema.objects.create(
+            hora_entrada='09:00:00', minutos_tolerancia=15,
+            email_gerente='gerente@example.com', ruta_red_reportes=''
+        )
+
+        resultado = generar_reporte_mensual(mes=7, anio=2026)
+
+        self.assertFalse(resultado.exitoso)
+        self.assertEqual(EnvioReporte.objects.filter(tipo=TipoReporte.MENSUAL).count(), 1)
+
+    def test_envia_email_con_excel_para_mes_especificado(self):
+        from django.core import mail
+        from attendance.models import ConfiguracionSistema, ConfiguracionReporte, DestinatarioReporte, TipoReporte
+        from attendance.utils import generar_reporte_mensual
+
+        ConfiguracionSistema.objects.create(
+            hora_entrada='09:00:00', minutos_tolerancia=15,
+            email_gerente='gerente@example.com', ruta_red_reportes=''
+        )
+        config_reporte = ConfiguracionReporte.objects.get(tipo=TipoReporte.MENSUAL)
+        DestinatarioReporte.objects.create(configuracion=config_reporte, email='destino@example.com', activo=True)
+
+        resultado = generar_reporte_mensual(mes=7, anio=2026)
+
+        self.assertTrue(resultado.exitoso)
+        self.assertEqual(resultado.periodo_descripcion, '07/2026')
+        self.assertEqual(len(mail.outbox[0].attachments), 1)
+
+
+class GenerarReporteMensualCommandTest(TestCase):
+    def test_comando_reporta_error_sin_destinatarios(self):
+        from io import StringIO
+        from django.core.management import call_command
+        from attendance.models import ConfiguracionSistema
+
+        ConfiguracionSistema.objects.create(
+            hora_entrada='09:00:00', minutos_tolerancia=15,
+            email_gerente='gerente@example.com', ruta_red_reportes=''
+        )
+
+        out = StringIO()
+        call_command('generar_reporte_mensual', '--mes=7', '--anio=2026', stdout=out)
+
+        self.assertIn('No se pudo enviar', out.getvalue())
