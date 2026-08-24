@@ -4,7 +4,8 @@ from django.utils import timezone
 from datetime import datetime, timedelta, date
 from .models import (
     Asistencia, TipoMovimiento, Empleado, ConfiguracionSistema, TiempoExtra, TipoHorario,
-    HorarioDiaSemana, AsignacionTurnoRotativo, TipoSistemaHorario
+    HorarioDiaSemana, AsignacionTurnoRotativo, TipoSistemaHorario,
+    ConfiguracionReporte, DestinatarioReporte, EnvioReporte, TipoReporte, OrigenEnvio
 )
 import os
 from django.conf import settings
@@ -161,6 +162,40 @@ def obtener_horario_esperado(empleado, fecha):
             'hora_fin_comida': tipo_horario.hora_fin_comida,
             'tipo_sistema': 'FIJO'
         }
+
+
+def obtener_destinatarios_reporte(tipo):
+    """Devuelve la lista de emails activos configurados para un tipo de reporte"""
+    try:
+        config = ConfiguracionReporte.objects.get(tipo=tipo)
+    except ConfiguracionReporte.DoesNotExist:
+        return []
+
+    if not config.activo:
+        return []
+
+    return list(
+        config.destinatarios.filter(activo=True).values_list('email', flat=True)
+    )
+
+
+def registrar_envio_reporte(tipo, periodo_descripcion, destinatarios, origen, enviado_por=None, exitoso=True, error=''):
+    """Crea el registro de auditoría de un envío de reporte"""
+    return EnvioReporte.objects.create(
+        tipo=tipo,
+        periodo_descripcion=periodo_descripcion,
+        destinatarios=', '.join(destinatarios),
+        origen=origen,
+        enviado_por=enviado_por,
+        exitoso=exitoso,
+        error=error,
+    )
+
+
+def dia_quincena_actual():
+    """Devuelve 13 o 28 según qué quincena está en curso hoy"""
+    hoy = timezone.now().date()
+    return 13 if hoy.day <= 13 else 28
 
 def enviar_email_visitante(visitante):
     """Envía email con QR al visitante y notifica al departamento"""

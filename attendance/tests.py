@@ -44,3 +44,54 @@ class ConfiguracionReporteSeedTest(TestCase):
         from attendance.models import ConfiguracionReporte
 
         self.assertFalse(ConfiguracionReporte.objects.filter(activo=False).exists())
+
+
+class ObtenerDestinatariosReporteTest(TestCase):
+    def test_sin_configuracion_devuelve_lista_vacia(self):
+        from attendance.utils import obtener_destinatarios_reporte
+
+        self.assertEqual(obtener_destinatarios_reporte('NO_EXISTE'), [])
+
+    def test_configuracion_inactiva_devuelve_lista_vacia(self):
+        from attendance.models import ConfiguracionReporte, DestinatarioReporte, TipoReporte
+        from attendance.utils import obtener_destinatarios_reporte
+
+        config = ConfiguracionReporte.objects.get(tipo=TipoReporte.DIARIO)
+        config.activo = False
+        config.save()
+        DestinatarioReporte.objects.create(configuracion=config, email='a@example.com', activo=True)
+
+        self.assertEqual(obtener_destinatarios_reporte(TipoReporte.DIARIO), [])
+
+    def test_solo_devuelve_destinatarios_activos(self):
+        from attendance.models import ConfiguracionReporte, DestinatarioReporte, TipoReporte
+        from attendance.utils import obtener_destinatarios_reporte
+
+        config = ConfiguracionReporte.objects.get(tipo=TipoReporte.SEMANAL)
+        # Clear seeded recipients first
+        config.destinatarios.all().delete()
+        DestinatarioReporte.objects.create(configuracion=config, email='activo@example.com', activo=True)
+        DestinatarioReporte.objects.create(configuracion=config, email='inactivo@example.com', activo=False)
+
+        self.assertEqual(obtener_destinatarios_reporte(TipoReporte.SEMANAL), ['activo@example.com'])
+
+
+class RegistrarEnvioReporteTest(TestCase):
+    def test_crea_registro_con_destinatarios_unidos_por_coma(self):
+        from attendance.models import TipoReporte, OrigenEnvio
+        from attendance.utils import registrar_envio_reporte
+
+        envio = registrar_envio_reporte(
+            TipoReporte.MENSUAL, '08/2026', ['a@example.com', 'b@example.com'],
+            OrigenEnvio.MANUAL, exitoso=True
+        )
+
+        self.assertEqual(envio.destinatarios, 'a@example.com, b@example.com')
+        self.assertTrue(envio.exitoso)
+
+
+class DiaQuincenaActualTest(TestCase):
+    def test_devuelve_13_o_28(self):
+        from attendance.utils import dia_quincena_actual
+
+        self.assertIn(dia_quincena_actual(), [13, 28])
