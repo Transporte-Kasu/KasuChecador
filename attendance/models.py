@@ -644,3 +644,66 @@ class AsignacionTurnoDiaria(models.Model):
         verbose_name_plural = "Asignaciones de Turnos Diarias"
         unique_together = ['empleado', 'fecha']
         ordering = ['fecha', 'empleado']
+
+
+# ========== SISTEMA DE ENVÍO DE REPORTES ==========
+
+class TipoReporte(models.TextChoices):
+    DIARIO = 'DIARIO', 'Diario'
+    SEMANAL = 'SEMANAL', 'Semanal'
+    QUINCENAL = 'QUINCENAL', 'Quincenal'
+    MENSUAL = 'MENSUAL', 'Mensual'
+    TIEMPO_EXTRA = 'TIEMPO_EXTRA', 'Tiempo Extra'
+
+class OrigenEnvio(models.TextChoices):
+    MANUAL = 'MANUAL', 'Manual'
+    AUTOMATICO = 'AUTOMATICO', 'Automático'
+
+class ConfiguracionReporte(models.Model):
+    """Configuración de destinatarios por tipo de reporte"""
+    tipo = models.CharField(max_length=20, choices=TipoReporte.choices, unique=True)
+    activo = models.BooleanField(
+        default=True,
+        help_text="Si está desactivado, no se envía ni manual ni automáticamente"
+    )
+
+    def __str__(self):
+        return self.get_tipo_display()
+
+    class Meta:
+        verbose_name = "Configuración de Reporte"
+        verbose_name_plural = "Configuraciones de Reportes"
+
+class DestinatarioReporte(models.Model):
+    """Destinatario de email para un tipo de reporte"""
+    configuracion = models.ForeignKey(ConfiguracionReporte, on_delete=models.CASCADE, related_name='destinatarios')
+    email = models.EmailField()
+    nombre = models.CharField(max_length=100, blank=True)
+    activo = models.BooleanField(default=True)
+
+    def __str__(self):
+        return f"{self.nombre or self.email} ({self.configuracion.get_tipo_display()})"
+
+    class Meta:
+        verbose_name = "Destinatario de Reporte"
+        verbose_name_plural = "Destinatarios de Reportes"
+
+class EnvioReporte(models.Model):
+    """Bitácora de envíos de reportes (manuales y automáticos)"""
+    tipo = models.CharField(max_length=20, choices=TipoReporte.choices)
+    fecha_hora = models.DateTimeField(auto_now_add=True)
+    periodo_descripcion = models.CharField(max_length=200)
+    destinatarios = models.TextField(help_text="Snapshot de a quién se envió, separado por coma")
+    origen = models.CharField(max_length=20, choices=OrigenEnvio.choices)
+    enviado_por = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
+    exitoso = models.BooleanField()
+    error = models.TextField(blank=True)
+
+    def __str__(self):
+        estado = "OK" if self.exitoso else "ERROR"
+        return f"{self.get_tipo_display()} - {self.fecha_hora.strftime('%d/%m/%Y %H:%M')} - {estado}"
+
+    class Meta:
+        verbose_name = "Envío de Reporte"
+        verbose_name_plural = "Envíos de Reportes"
+        ordering = ['-fecha_hora']
