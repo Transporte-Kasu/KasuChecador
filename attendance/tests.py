@@ -120,7 +120,7 @@ class GenerarReporteDiarioTest(TestCase):
         from django.core import mail
         from attendance.models import (
             ConfiguracionSistema, ConfiguracionReporte, DestinatarioReporte,
-            TipoReporte, OrigenEnvio
+            Empleado, TipoReporte, OrigenEnvio
         )
         from attendance.utils import generar_reporte_diario
 
@@ -131,6 +131,11 @@ class GenerarReporteDiarioTest(TestCase):
         config_reporte = ConfiguracionReporte.objects.get(tipo=TipoReporte.DIARIO)
         config_reporte.destinatarios.all().delete()
         DestinatarioReporte.objects.create(configuracion=config_reporte, email='destino@example.com', activo=True)
+
+        user = User.objects.create_user(
+            username='empleado_reporte_diario', first_name='Test', last_name='Empleado'
+        )
+        Empleado.objects.create(user=user, codigo_empleado='EMPRPTDIARIO', activo=True)
 
         resultado = generar_reporte_diario(origen=OrigenEnvio.MANUAL)
 

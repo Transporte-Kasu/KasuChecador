@@ -459,9 +459,6 @@ def generar_reporte_diario(origen=OrigenEnvio.AUTOMATICO, enviado_por=None):
     llegaron = asistencias_entrada.count()
     retardos = asistencias_entrada.filter(retardo=True)
 
-    # Calcular porcentaje de asistencia
-    porcentaje_asistencia = (llegaron/total_empleados*100) if total_empleados > 0 else 0
-
     # Empleados con retardos consecutivos (últimos 5 días)
     fecha_inicio = hoy - timedelta(days=5)
     empleados_retardos_consecutivos = []
@@ -503,7 +500,7 @@ def generar_reporte_diario(origen=OrigenEnvio.AUTOMATICO, enviado_por=None):
         <div class="resumen">
             <h2>Resumen</h2>
             <p><strong>Total de Empleados:</strong> {total_empleados}</p>
-            <p><strong>Asistieron:</strong> {llegaron} ({porcentaje_asistencia:.1f}%)</p>
+            <p><strong>Asistieron:</strong> {llegaron} ({(llegaron/total_empleados*100):.1f}%)</p>
             <p><strong>Retardos del Día:</strong> {retardos.count()}</p>
         </div>
 
