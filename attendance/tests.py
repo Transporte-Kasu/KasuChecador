@@ -30,3 +30,17 @@ class ReporteModelsTest(TestCase):
             exitoso=True
         )
         self.assertIn('OK', str(envio))
+
+
+class ConfiguracionReporteSeedTest(TestCase):
+    def test_seed_crea_las_5_configuraciones(self):
+        from attendance.models import ConfiguracionReporte, TipoReporte
+
+        self.assertEqual(ConfiguracionReporte.objects.count(), 5)
+        tipos = set(ConfiguracionReporte.objects.values_list('tipo', flat=True))
+        self.assertEqual(tipos, set(TipoReporte.values))
+
+    def test_configuraciones_estan_activas_por_defecto(self):
+        from attendance.models import ConfiguracionReporte
+
+        self.assertFalse(ConfiguracionReporte.objects.filter(activo=False).exists())
