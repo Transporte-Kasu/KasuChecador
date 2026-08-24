@@ -179,3 +179,70 @@ class GenerarReporteSemanalTest(TestCase):
 
         self.assertTrue(resultado.exitoso)
         self.assertEqual(len(mail.outbox[0].attachments), 1)
+
+
+class GenerarReporteQuincenalTest(TestCase):
+    def test_sin_destinatarios_registra_envio_fallido(self):
+        from attendance.models import ConfiguracionSistema, TipoReporte, EnvioReporte
+        from attendance.utils import generar_reporte_quincenal
+
+        ConfiguracionSistema.objects.create(
+            hora_entrada='09:00:00', minutos_tolerancia=15,
+            email_gerente='gerente@example.com', ruta_red_reportes=''
+        )
+
+        resultado = generar_reporte_quincenal(13)
+
+        self.assertFalse(resultado.exitoso)
+        self.assertEqual(EnvioReporte.objects.filter(tipo=TipoReporte.QUINCENAL).count(), 1)
+
+    def test_envia_email_para_segunda_quincena(self):
+        from django.core import mail
+        from attendance.models import ConfiguracionSistema, ConfiguracionReporte, DestinatarioReporte, TipoReporte
+        from attendance.utils import generar_reporte_quincenal
+
+        ConfiguracionSistema.objects.create(
+            hora_entrada='09:00:00', minutos_tolerancia=15,
+            email_gerente='gerente@example.com', ruta_red_reportes=''
+        )
+        config_reporte = ConfiguracionReporte.objects.get(tipo=TipoReporte.QUINCENAL)
+        DestinatarioReporte.objects.create(configuracion=config_reporte, email='destino@example.com', activo=True)
+
+        resultado = generar_reporte_quincenal(28)
+
+        self.assertTrue(resultado.exitoso)
+        self.assertIn('Segunda Quincena', resultado.periodo_descripcion)
+        self.assertEqual(len(mail.outbox), 1)
+
+
+class GenerarReporteTiempoExtraMensualTest(TestCase):
+    def test_sin_destinatarios_registra_envio_fallido(self):
+        from attendance.models import ConfiguracionSistema, TipoReporte, EnvioReporte
+        from attendance.utils import generar_reporte_tiempo_extra_mensual
+
+        ConfiguracionSistema.objects.create(
+            hora_entrada='09:00:00', minutos_tolerancia=15,
+            email_gerente='gerente@example.com', ruta_red_reportes=''
+        )
+
+        resultado = generar_reporte_tiempo_extra_mensual()
+
+        self.assertFalse(resultado.exitoso)
+        self.assertEqual(EnvioReporte.objects.filter(tipo=TipoReporte.TIEMPO_EXTRA).count(), 1)
+
+    def test_envia_email_sin_requerir_ruta_de_red(self):
+        from django.core import mail
+        from attendance.models import ConfiguracionSistema, ConfiguracionReporte, DestinatarioReporte, TipoReporte
+        from attendance.utils import generar_reporte_tiempo_extra_mensual
+
+        ConfiguracionSistema.objects.create(
+            hora_entrada='09:00:00', minutos_tolerancia=15,
+            email_gerente='gerente@example.com', ruta_red_reportes=''
+        )
+        config_reporte = ConfiguracionReporte.objects.get(tipo=TipoReporte.TIEMPO_EXTRA)
+        DestinatarioReporte.objects.create(configuracion=config_reporte, email='destino@example.com', activo=True)
+
+        resultado = generar_reporte_tiempo_extra_mensual()
+
+        self.assertTrue(resultado.exitoso)
+        self.assertEqual(len(mail.outbox), 1)

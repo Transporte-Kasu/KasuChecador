@@ -578,29 +578,38 @@ def generar_reporte_diario(origen=OrigenEnvio.AUTOMATICO, enviado_por=None):
     )
 
 
-def generar_reporte_quincenal(dia):
+def generar_reporte_quincenal(dia, origen=OrigenEnvio.AUTOMATICO, enviado_por=None):
     """Genera el reporte quincenal (días 13 y 28)"""
     hoy = timezone.now().date()
 
-    # Determinar el período
     if dia == 13:
         fecha_inicio = hoy.replace(day=1)
         fecha_fin = hoy.replace(day=13)
         periodo = "Primera Quincena"
-    else:  # día 28
+    else:
         fecha_inicio = hoy.replace(day=14)
-        # Último día del mes
         if hoy.month == 12:
             fecha_fin = hoy.replace(day=31)
         else:
             fecha_fin = (hoy.replace(month=hoy.month + 1, day=1) - timedelta(days=1))
         periodo = "Segunda Quincena"
 
+    periodo_descripcion = f"{periodo} - {fecha_inicio.strftime('%d/%m/%Y')} a {fecha_fin.strftime('%d/%m/%Y')}"
+
     config = ConfiguracionSistema.objects.first()
     if not config:
-        return
+        return registrar_envio_reporte(
+            TipoReporte.QUINCENAL, periodo_descripcion, [], origen,
+            enviado_por=enviado_por, exitoso=False, error='No se encontró configuración del sistema'
+        )
 
-    # Obtener datos por empleado
+    destinatarios = obtener_destinatarios_reporte(TipoReporte.QUINCENAL)
+    if not destinatarios:
+        return registrar_envio_reporte(
+            TipoReporte.QUINCENAL, periodo_descripcion, [], origen,
+            enviado_por=enviado_por, exitoso=False, error='Sin destinatarios configurados'
+        )
+
     empleados = Empleado.objects.filter(activo=True)
 
     html_reporte = f"""
@@ -645,15 +654,12 @@ def generar_reporte_quincenal(dia):
         retardos = asistencias.filter(retardo=True).count()
         total_min_retardo = sum(asistencias.filter(retardo=True).values_list('minutos_retardo', flat=True))
 
-        # Calcular días/turnos laborales según tipo de horario
         tipo_horario = empleado.tipo_horario
         if tipo_horario and tipo_horario.es_turno_24h:
-            # Para turnos de 24h: calcular turnos esperados en el período
             dias_periodo = (fecha_fin - fecha_inicio).days + 1
             turnos_esperados = dias_periodo // 2
             faltas = max(0, turnos_esperados - dias_asistidos)
         else:
-            # Para horarios regulares: todos los días del período
             dias_laborales = (fecha_fin - fecha_inicio).days + 1
             faltas = dias_laborales - dias_asistidos
 
@@ -671,35 +677,55 @@ def generar_reporte_quincenal(dia):
 
     html_reporte += "</table></body></html>"
 
-    # Enviar email
     email = EmailMultiAlternatives(
         f'Reporte Quincenal - {periodo} - {hoy.strftime("%B %Y")}',
         'Reporte quincenal de asistencias. Por favor revisa el contenido HTML.',
         settings.DEFAULT_FROM_EMAIL,
-        [config.email_gerente]
+        destinatarios
     )
     email.attach_alternative(html_reporte, "text/html")
-    email.send(fail_silently=False)
+
+    try:
+        email.send(fail_silently=False)
+    except Exception as e:
+        return registrar_envio_reporte(
+            TipoReporte.QUINCENAL, periodo_descripcion, destinatarios, origen,
+            enviado_por=enviado_por, exitoso=False, error=str(e)
+        )
+
+    return registrar_envio_reporte(
+        TipoReporte.QUINCENAL, periodo_descripcion, destinatarios, origen,
+        enviado_por=enviado_por, exitoso=True
+    )
 
 
-def generar_reporte_tiempo_extra_mensual():
-    """Genera el reporte mensual de tiempo extra y lo guarda en la red"""
+def generar_reporte_tiempo_extra_mensual(origen=OrigenEnvio.AUTOMATICO, enviado_por=None):
+    """Genera el reporte mensual de tiempo extra: lo guarda en la red (si hay ruta configurada) y lo envía por email"""
     hoy = timezone.now()
     mes = hoy.month
     anio = hoy.year
+    periodo_descripcion = f"{mes:02d}/{anio}"
 
     config = ConfiguracionSistema.objects.first()
-    if not config or not config.ruta_red_reportes:
-        return
+    if not config:
+        return registrar_envio_reporte(
+            TipoReporte.TIEMPO_EXTRA, periodo_descripcion, [], origen,
+            enviado_por=enviado_por, exitoso=False, error='No se encontró configuración del sistema'
+        )
 
-    # Obtener tiempos extra del mes
+    destinatarios = obtener_destinatarios_reporte(TipoReporte.TIEMPO_EXTRA)
+    if not destinatarios:
+        return registrar_envio_reporte(
+            TipoReporte.TIEMPO_EXTRA, periodo_descripcion, [], origen,
+            enviado_por=enviado_por, exitoso=False, error='Sin destinatarios configurados'
+        )
+
     tiempos_extra = TiempoExtra.objects.filter(
         fecha__month=mes,
         fecha__year=anio,
         aprobado=True
     ).select_related('empleado', 'empleado__user')
 
-    # Generar HTML
     html_reporte = f"""
     <html>
     <head>
@@ -778,16 +804,36 @@ def generar_reporte_tiempo_extra_mensual():
 
     html_reporte += "</table></body></html>"
 
-    # Guardar en ruta de red
-    nombre_archivo = f"reporte_tiempo_extra_{anio}_{mes:02d}.html"
-    ruta_completa = os.path.join(config.ruta_red_reportes, nombre_archivo)
+    if config.ruta_red_reportes:
+        nombre_archivo = f"reporte_tiempo_extra_{anio}_{mes:02d}.html"
+        ruta_completa = os.path.join(config.ruta_red_reportes, nombre_archivo)
+        try:
+            with open(ruta_completa, 'w', encoding='utf-8') as f:
+                f.write(html_reporte)
+            print(f"Reporte guardado en: {ruta_completa}")
+        except Exception as e:
+            print(f"Error al guardar reporte en red: {e}")
+
+    email = EmailMultiAlternatives(
+        f'Reporte de Tiempo Extra - {periodo_descripcion}',
+        'Reporte mensual de tiempo extra. Por favor revisa el contenido HTML.',
+        settings.DEFAULT_FROM_EMAIL,
+        destinatarios
+    )
+    email.attach_alternative(html_reporte, "text/html")
 
     try:
-        with open(ruta_completa, 'w', encoding='utf-8') as f:
-            f.write(html_reporte)
-        print(f"Reporte guardado en: {ruta_completa}")
+        email.send(fail_silently=False)
     except Exception as e:
-        print(f"Error al guardar reporte: {e}")
+        return registrar_envio_reporte(
+            TipoReporte.TIEMPO_EXTRA, periodo_descripcion, destinatarios, origen,
+            enviado_por=enviado_por, exitoso=False, error=str(e)
+        )
+
+    return registrar_envio_reporte(
+        TipoReporte.TIEMPO_EXTRA, periodo_descripcion, destinatarios, origen,
+        enviado_por=enviado_por, exitoso=True
+    )
 
 # ========== FUNCIONES PARA REPORTES EXCEL ==========
 
