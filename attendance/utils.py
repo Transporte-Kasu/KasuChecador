@@ -272,22 +272,29 @@ def enviar_email_visitante(visitante):
     email_depto.send(fail_silently=False)
 
 
-def generar_reporte_semanal():
+def generar_reporte_semanal(origen=OrigenEnvio.AUTOMATICO, enviado_por=None):
     """Genera y envía el reporte semanal todos los jueves"""
     hoy = timezone.now().date()
 
-    # Calcular el rango de la semana (lunes a jueves)
-    # Si hoy es jueves (weekday = 3), la semana va desde el lunes anterior hasta hoy
-    dias_desde_lunes = hoy.weekday()  # 0=lunes, 3=jueves
+    dias_desde_lunes = hoy.weekday()
     fecha_inicio = hoy - timedelta(days=dias_desde_lunes)
     fecha_fin = hoy
+    periodo_descripcion = f"{fecha_inicio.strftime('%d/%m/%Y')} - {fecha_fin.strftime('%d/%m/%Y')}"
 
-    # Obtener configuración
     config = ConfiguracionSistema.objects.first()
     if not config:
-        return
+        return registrar_envio_reporte(
+            TipoReporte.SEMANAL, periodo_descripcion, [], origen,
+            enviado_por=enviado_por, exitoso=False, error='No se encontró configuración del sistema'
+        )
 
-    # Obtener datos por empleado
+    destinatarios = obtener_destinatarios_reporte(TipoReporte.SEMANAL)
+    if not destinatarios:
+        return registrar_envio_reporte(
+            TipoReporte.SEMANAL, periodo_descripcion, [], origen,
+            enviado_por=enviado_por, exitoso=False, error='Sin destinatarios configurados'
+        )
+
     empleados = Empleado.objects.filter(activo=True)
 
     html_reporte = f"""
@@ -322,7 +329,6 @@ def generar_reporte_semanal():
             </tr>
     """
 
-    # Recolectar empleados con retardos consecutivos
     empleados_retardos_consecutivos = []
 
     for empleado in empleados:
@@ -337,20 +343,16 @@ def generar_reporte_semanal():
         retardos = asistencias.filter(retardo=True).count()
         total_min_retardo = sum(asistencias.filter(retardo=True).values_list('minutos_retardo', flat=True))
 
-        # Calcular días/turnos laborales según tipo de horario
         tipo_horario = empleado.tipo_horario
         if tipo_horario and tipo_horario.es_turno_24h:
-            # Para turnos de 24h: calcular turnos esperados en el período
-            # Ciclo de 48 horas (24h trabajo + 24h descanso)
             dias_periodo = (fecha_fin - fecha_inicio).days + 1
-            turnos_esperados = dias_periodo // 2  # Un turno cada 2 días
+            turnos_esperados = dias_periodo // 2
             faltas = max(0, turnos_esperados - dias_asistidos)
         else:
-            # Para horarios regulares: lunes a viernes
             dias_laborales = 0
             fecha_actual = fecha_inicio
             while fecha_actual <= fecha_fin:
-                if fecha_actual.weekday() < 5:  # Lunes a viernes
+                if fecha_actual.weekday() < 5:
                     dias_laborales += 1
                 fecha_actual += timedelta(days=1)
             faltas = dias_laborales - dias_asistidos
@@ -367,7 +369,6 @@ def generar_reporte_semanal():
             </tr>
         """
 
-        # Detectar empleados con retardos consecutivos (3 o más retardos en la semana)
         if retardos >= 3:
             empleados_retardos_consecutivos.append({
                 'nombre': empleado.user.get_full_name(),
@@ -377,7 +378,6 @@ def generar_reporte_semanal():
 
     html_reporte += "</table>"
 
-    # Agregar alerta de retardos consecutivos si existen
     if empleados_retardos_consecutivos:
         html_reporte += """
         <div class="alerta">
@@ -404,33 +404,50 @@ def generar_reporte_semanal():
 
     html_reporte += "</body></html>"
 
-    # Generar archivo Excel
     excel_buffer = generar_excel_reporte_semanal(fecha_inicio, fecha_fin)
     nombre_excel = f"reporte_semanal_{fecha_inicio.strftime('%Y%m%d')}_{fecha_fin.strftime('%Y%m%d')}.xlsx"
 
-    # Enviar email
     email = EmailMultiAlternatives(
         f'Reporte Semanal de Asistencias - Semana del {fecha_inicio.strftime("%d/%m/%Y")}',
         'Reporte semanal de asistencias. Por favor revisa el contenido HTML y el archivo Excel adjunto con el detalle de todas las checadas.',
         settings.DEFAULT_FROM_EMAIL,
-        [config.email_gerente,'zuly.becerra@loginco.com.mx']
+        destinatarios
     )
     email.attach_alternative(html_reporte, "text/html")
-    
-    # Adjuntar archivo Excel
     email.attach(nombre_excel, excel_buffer.read(), 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
-    
-    email.send(fail_silently=False)
+
+    try:
+        email.send(fail_silently=False)
+    except Exception as e:
+        return registrar_envio_reporte(
+            TipoReporte.SEMANAL, periodo_descripcion, destinatarios, origen,
+            enviado_por=enviado_por, exitoso=False, error=str(e)
+        )
+
+    return registrar_envio_reporte(
+        TipoReporte.SEMANAL, periodo_descripcion, destinatarios, origen,
+        enviado_por=enviado_por, exitoso=True
+    )
 
 
-def generar_reporte_diario():
+def generar_reporte_diario(origen=OrigenEnvio.AUTOMATICO, enviado_por=None):
     """Genera y envía el reporte diario después de las 12:00 PM"""
     hoy = timezone.now().date()
+    periodo_descripcion = hoy.strftime('%d/%m/%Y')
 
-    # Obtener configuración
     config = ConfiguracionSistema.objects.first()
     if not config:
-        return
+        return registrar_envio_reporte(
+            TipoReporte.DIARIO, periodo_descripcion, [], origen,
+            enviado_por=enviado_por, exitoso=False, error='No se encontró configuración del sistema'
+        )
+
+    destinatarios = obtener_destinatarios_reporte(TipoReporte.DIARIO)
+    if not destinatarios:
+        return registrar_envio_reporte(
+            TipoReporte.DIARIO, periodo_descripcion, [], origen,
+            enviado_por=enviado_por, exitoso=False, error='Sin destinatarios configurados'
+        )
 
     # Asistencias del día
     asistencias_entrada = Asistencia.objects.filter(
@@ -441,6 +458,9 @@ def generar_reporte_diario():
     total_empleados = Empleado.objects.filter(activo=True).count()
     llegaron = asistencias_entrada.count()
     retardos = asistencias_entrada.filter(retardo=True)
+
+    # Calcular porcentaje de asistencia
+    porcentaje_asistencia = (llegaron/total_empleados*100) if total_empleados > 0 else 0
 
     # Empleados con retardos consecutivos (últimos 5 días)
     fecha_inicio = hoy - timedelta(days=5)
@@ -483,7 +503,7 @@ def generar_reporte_diario():
         <div class="resumen">
             <h2>Resumen</h2>
             <p><strong>Total de Empleados:</strong> {total_empleados}</p>
-            <p><strong>Asistieron:</strong> {llegaron} ({(llegaron/total_empleados*100):.1f}%)</p>
+            <p><strong>Asistieron:</strong> {llegaron} ({porcentaje_asistencia:.1f}%)</p>
             <p><strong>Retardos del Día:</strong> {retardos.count()}</p>
         </div>
 
@@ -543,10 +563,22 @@ def generar_reporte_diario():
         f'Reporte Diario de Asistencia - {hoy.strftime("%d/%m/%Y")}',
         'Reporte diario de asistencias. Por favor revisa el contenido HTML.',
         settings.DEFAULT_FROM_EMAIL,
-        [config.email_gerente,'zuly.becerra@loginco.com.mx']
+        destinatarios
     )
     email.attach_alternative(html_reporte, "text/html")
-    email.send(fail_silently=False)
+
+    try:
+        email.send(fail_silently=False)
+    except Exception as e:
+        return registrar_envio_reporte(
+            TipoReporte.DIARIO, periodo_descripcion, destinatarios, origen,
+            enviado_por=enviado_por, exitoso=False, error=str(e)
+        )
+
+    return registrar_envio_reporte(
+        TipoReporte.DIARIO, periodo_descripcion, destinatarios, origen,
+        enviado_por=enviado_por, exitoso=True
+    )
 
 
 def generar_reporte_quincenal(dia):

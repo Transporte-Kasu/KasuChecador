@@ -95,3 +95,82 @@ class DiaQuincenaActualTest(TestCase):
         from attendance.utils import dia_quincena_actual
 
         self.assertIn(dia_quincena_actual(), [13, 28])
+
+
+class GenerarReporteDiarioTest(TestCase):
+    def test_sin_destinatarios_registra_envio_fallido(self):
+        from attendance.models import ConfiguracionSistema, ConfiguracionReporte, TipoReporte, EnvioReporte
+        from attendance.utils import generar_reporte_diario
+
+        ConfiguracionSistema.objects.create(
+            hora_entrada='09:00:00', minutos_tolerancia=15,
+            email_gerente='gerente@example.com', ruta_red_reportes=''
+        )
+        config_reporte = ConfiguracionReporte.objects.get(tipo=TipoReporte.DIARIO)
+        config_reporte.destinatarios.all().delete()
+
+        resultado = generar_reporte_diario()
+
+        self.assertFalse(resultado.exitoso)
+        self.assertEqual(resultado.error, 'Sin destinatarios configurados')
+        self.assertEqual(EnvioReporte.objects.filter(tipo=TipoReporte.DIARIO).count(), 1)
+
+    def test_envia_email_a_destinatarios_configurados(self):
+        from django.contrib.auth.models import User
+        from django.core import mail
+        from attendance.models import (
+            ConfiguracionSistema, ConfiguracionReporte, DestinatarioReporte,
+            TipoReporte, OrigenEnvio
+        )
+        from attendance.utils import generar_reporte_diario
+
+        ConfiguracionSistema.objects.create(
+            hora_entrada='09:00:00', minutos_tolerancia=15,
+            email_gerente='gerente@example.com', ruta_red_reportes=''
+        )
+        config_reporte = ConfiguracionReporte.objects.get(tipo=TipoReporte.DIARIO)
+        config_reporte.destinatarios.all().delete()
+        DestinatarioReporte.objects.create(configuracion=config_reporte, email='destino@example.com', activo=True)
+
+        resultado = generar_reporte_diario(origen=OrigenEnvio.MANUAL)
+
+        self.assertTrue(resultado.exitoso)
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertEqual(mail.outbox[0].to, ['destino@example.com'])
+        self.assertEqual(resultado.origen, OrigenEnvio.MANUAL)
+
+
+class GenerarReporteSemanalTest(TestCase):
+    def test_sin_destinatarios_registra_envio_fallido(self):
+        from attendance.models import ConfiguracionSistema, ConfiguracionReporte, TipoReporte, EnvioReporte
+        from attendance.utils import generar_reporte_semanal
+
+        ConfiguracionSistema.objects.create(
+            hora_entrada='09:00:00', minutos_tolerancia=15,
+            email_gerente='gerente@example.com', ruta_red_reportes=''
+        )
+        config_reporte = ConfiguracionReporte.objects.get(tipo=TipoReporte.SEMANAL)
+        config_reporte.destinatarios.all().delete()
+
+        resultado = generar_reporte_semanal()
+
+        self.assertFalse(resultado.exitoso)
+        self.assertEqual(EnvioReporte.objects.filter(tipo=TipoReporte.SEMANAL).count(), 1)
+
+    def test_envia_email_con_excel_adjunto(self):
+        from django.core import mail
+        from attendance.models import ConfiguracionSistema, ConfiguracionReporte, DestinatarioReporte, TipoReporte
+        from attendance.utils import generar_reporte_semanal
+
+        ConfiguracionSistema.objects.create(
+            hora_entrada='09:00:00', minutos_tolerancia=15,
+            email_gerente='gerente@example.com', ruta_red_reportes=''
+        )
+        config_reporte = ConfiguracionReporte.objects.get(tipo=TipoReporte.SEMANAL)
+        config_reporte.destinatarios.all().delete()
+        DestinatarioReporte.objects.create(configuracion=config_reporte, email='destino@example.com', activo=True)
+
+        resultado = generar_reporte_semanal()
+
+        self.assertTrue(resultado.exitoso)
+        self.assertEqual(len(mail.outbox[0].attachments), 1)
