@@ -1,18 +1,19 @@
 # attendance/management/commands/generar_reporte_tiempo_extra.py
-from django.core.management.base import BaseCommand
-from django.utils import timezone
+from django.core.management.base import BaseCommand, CommandError
 from attendance.utils import generar_reporte_tiempo_extra_mensual
+
 
 class Command(BaseCommand):
     help = 'Genera el reporte mensual de tiempo extra'
 
     def handle(self, *args, **options):
         self.stdout.write('Generando reporte mensual de tiempo extra...')
-        try:
-            generar_reporte_tiempo_extra_mensual()
+        resultado = generar_reporte_tiempo_extra_mensual()
+
+        if resultado.exitoso:
             self.stdout.write(self.style.SUCCESS('Reporte de tiempo extra generado exitosamente'))
-        except Exception as e:
-            self.stdout.write(self.style.ERROR(f'Error al generar reporte: {e}'))
+        else:
+            raise CommandError(f'Error al generar reporte de tiempo extra: {resultado.error}')
 
 
 """

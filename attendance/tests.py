@@ -426,3 +426,105 @@ class DashboardReportesContextTest(TestCase):
         semanal_info = next(r for r in reportes_info if r['tipo'] == TipoReporte.SEMANAL)
         self.assertEqual(semanal_info['destinatarios_count'], destinatarios_previos + 1)
         self.assertContains(response, 'Enviar ahora')
+
+
+class ReporteManagementCommandsExitCodeTest(TestCase):
+    """
+    Verifica que enviar_reporte_dario, enviar_reporte_semanal,
+    enviar_reporte_quincenal y generar_reporte_tiempo_extra ya no reporten
+    éxito cuando el envío falla. Antes de este fix, ahora que
+    generar_reporte_* nunca lanza excepciones (registra el fallo en
+    EnvioReporte en vez de propagar), el try/except de estos comandos
+    quedaba muerto y siempre imprimía SUCCESS.
+    """
+
+    def _configuracion_sistema(self):
+        from attendance.models import ConfiguracionSistema
+        return ConfiguracionSistema.objects.create(
+            hora_entrada='09:00:00', minutos_tolerancia=15,
+            email_gerente='gerente@example.com', ruta_red_reportes=''
+        )
+
+    def test_enviar_reporte_dario_falla_con_commanderror_sin_destinatarios(self):
+        from datetime import datetime
+        from unittest.mock import patch
+        from django.core.management import call_command
+        from django.core.management.base import CommandError
+        from django.utils import timezone as tz
+        from attendance.models import ConfiguracionReporte, TipoReporte
+
+        self._configuracion_sistema()
+        # La migración 0007 precarga un destinatario activo para DIARIO
+        # (correo hardcodeado histórico); se limpia para probar el caso
+        # real "sin destinatarios configurados".
+        ConfiguracionReporte.objects.get(tipo=TipoReporte.DIARIO).destinatarios.all().delete()
+        hora_valida = tz.make_aware(datetime(2026, 8, 24, 13, 0, 0))
+
+        with patch('attendance.management.commands.enviar_reporte_dario.timezone.now', return_value=hora_valida):
+            with self.assertRaises(CommandError):
+                call_command('enviar_reporte_dario')
+
+    def test_enviar_reporte_dario_exitoso_con_destinatarios(self):
+        from datetime import datetime
+        from io import StringIO
+        from unittest.mock import patch
+        from django.core.management import call_command
+        from django.utils import timezone as tz
+        from attendance.models import ConfiguracionReporte, DestinatarioReporte, TipoReporte, Empleado
+        from django.contrib.auth.models import User
+
+        self._configuracion_sistema()
+        config_reporte = ConfiguracionReporte.objects.get(tipo=TipoReporte.DIARIO)
+        DestinatarioReporte.objects.create(configuracion=config_reporte, email='destino@example.com', activo=True)
+        user = User.objects.create_user(username='empleado_cmd_diario', first_name='Test', last_name='Empleado')
+        Empleado.objects.create(user=user, codigo_empleado='EMPCMDDIARIO', activo=True)
+
+        hora_valida = tz.make_aware(datetime(2026, 8, 24, 13, 0, 0))
+        out = StringIO()
+        with patch('attendance.management.commands.enviar_reporte_dario.timezone.now', return_value=hora_valida):
+            call_command('enviar_reporte_dario', stdout=out)
+
+        self.assertIn('exitosamente', out.getvalue())
+
+    def test_enviar_reporte_semanal_falla_con_commanderror_sin_destinatarios(self):
+        from datetime import datetime
+        from unittest.mock import patch
+        from django.core.management import call_command
+        from django.core.management.base import CommandError
+        from django.utils import timezone as tz
+        from attendance.models import ConfiguracionReporte, TipoReporte
+
+        self._configuracion_sistema()
+        # La migración 0007 precarga un destinatario activo para SEMANAL
+        # (correo hardcodeado histórico); se limpia para probar el caso
+        # real "sin destinatarios configurados".
+        ConfiguracionReporte.objects.get(tipo=TipoReporte.SEMANAL).destinatarios.all().delete()
+        # 2026-08-27 es jueves (weekday() == 3)
+        jueves = tz.make_aware(datetime(2026, 8, 27, 12, 0, 0))
+
+        with patch('attendance.management.commands.enviar_reporte_semanal.timezone.now', return_value=jueves):
+            with self.assertRaises(CommandError):
+                call_command('enviar_reporte_semanal')
+
+    def test_enviar_reporte_quincenal_falla_con_commanderror_sin_destinatarios(self):
+        from datetime import datetime
+        from unittest.mock import patch
+        from django.core.management import call_command
+        from django.core.management.base import CommandError
+        from django.utils import timezone as tz
+
+        self._configuracion_sistema()
+        dia_13 = tz.make_aware(datetime(2026, 8, 13, 12, 0, 0))
+
+        with patch('attendance.management.commands.enviar_reporte_quincenal.timezone.now', return_value=dia_13):
+            with self.assertRaises(CommandError):
+                call_command('enviar_reporte_quincenal')
+
+    def test_generar_reporte_tiempo_extra_falla_con_commanderror_sin_destinatarios(self):
+        from django.core.management import call_command
+        from django.core.management.base import CommandError
+
+        self._configuracion_sistema()
+
+        with self.assertRaises(CommandError):
+            call_command('generar_reporte_tiempo_extra')
