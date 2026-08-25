@@ -1,7 +1,8 @@
 from django.shortcuts import render, redirect
-from django.http import JsonResponse, HttpResponse
+from django.http import JsonResponse, HttpResponse, Http404
 from django.views.generic import CreateView, ListView
 from django.contrib import messages
+from django.contrib.auth.decorators import login_required
 from django.utils import timezone
 from django.db.models import Count, Q
 from datetime import datetime, timedelta
@@ -10,10 +11,14 @@ from .models import (
     Empleado, Asistencia, TipoMovimiento, Visitante,
     RegistroVisita, TiempoExtra, ConfiguracionSistema,
     SolicitudPermiso, SolicitudVacaciones, EstadoSolicitud, TipoAusencia,
-    AsignacionTurnoDiaria, TurnoRotativo
+    AsignacionTurnoDiaria, TurnoRotativo, TipoReporte, OrigenEnvio
 )
 from .forms import VisitanteForm, CheckInForm
-from .utils import enviar_email_visitante, generar_reporte_diario, generar_reporte_quincenal
+from .utils import (
+    enviar_email_visitante, generar_reporte_diario, generar_reporte_quincenal,
+    generar_reporte_semanal, generar_reporte_mensual, generar_reporte_tiempo_extra_mensual,
+    dia_quincena_actual
+)
 import json
 from django.views.decorators.csrf import csrf_exempt
 
@@ -331,6 +336,7 @@ def visitante_exito(request):
     return render(request, 'attendance/visitante_exito.html')
 
 # Dashboard para gerencia
+@login_required
 def dashboard_view(request):
     """Dashboard con estadísticas de asistencia"""
     hoy = timezone.now().date()
@@ -376,6 +382,7 @@ def dashboard_view(request):
     return render(request, 'attendance/dashboard.html', context)
 
 # Vista de reportes
+@login_required
 def reporte_mensual_view(request, mes=None, anio=None):
     """Vista para consultar reportes mensuales"""
     if not mes or not anio:
@@ -526,6 +533,7 @@ def verificar_visitante_qr(request):
 
 # ========== ASIGNACIÓN DE TURNOS MENSUAL ==========
 
+@login_required
 def asignacion_turnos_mensual(request, mes=None, anio=None):
     """Vista tipo Excel para asignación de turnos mensuales"""
     import calendar
@@ -734,3 +742,31 @@ def guardar_asignacion_turno(request):
         return JsonResponse({'error': 'Turno no encontrado'}, status=404)
     except Exception as e:
         return JsonResponse({'error': str(e)}, status=500)
+
+
+# ========== ENVÍO MANUAL DE REPORTES ==========
+
+@login_required
+@require_http_methods(["POST"])
+def enviar_reporte_view(request, tipo):
+    """Dispara el envío manual de un reporte desde el Dashboard"""
+    if tipo not in TipoReporte.values:
+        raise Http404("Tipo de reporte no válido")
+
+    if tipo == TipoReporte.DIARIO:
+        resultado = generar_reporte_diario(origen=OrigenEnvio.MANUAL, enviado_por=request.user)
+    elif tipo == TipoReporte.SEMANAL:
+        resultado = generar_reporte_semanal(origen=OrigenEnvio.MANUAL, enviado_por=request.user)
+    elif tipo == TipoReporte.QUINCENAL:
+        resultado = generar_reporte_quincenal(dia_quincena_actual(), origen=OrigenEnvio.MANUAL, enviado_por=request.user)
+    elif tipo == TipoReporte.MENSUAL:
+        resultado = generar_reporte_mensual(origen=OrigenEnvio.MANUAL, enviado_por=request.user)
+    else:
+        resultado = generar_reporte_tiempo_extra_mensual(origen=OrigenEnvio.MANUAL, enviado_por=request.user)
+
+    if resultado.exitoso:
+        messages.success(request, f'Reporte {resultado.get_tipo_display()} enviado a: {resultado.destinatarios}')
+    else:
+        messages.error(request, f'No se pudo enviar el reporte {resultado.get_tipo_display()}: {resultado.error}')
+
+    return redirect('dashboard')

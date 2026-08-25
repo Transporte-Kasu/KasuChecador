@@ -297,3 +297,68 @@ class GenerarReporteMensualCommandTest(TestCase):
         call_command('generar_reporte_mensual', '--mes=7', '--anio=2026', stdout=out)
 
         self.assertIn('No se pudo enviar', out.getvalue())
+
+
+class DashboardLoginRequiredTest(TestCase):
+    def test_dashboard_redirige_a_login_si_no_hay_sesion(self):
+        from django.urls import reverse
+
+        response = self.client.get(reverse('dashboard'))
+
+        self.assertEqual(response.status_code, 302)
+        self.assertIn('/admin/login/', response.url)
+
+
+class EnviarReporteViewTest(TestCase):
+    def test_requiere_login(self):
+        from django.urls import reverse
+
+        response = self.client.post(reverse('enviar_reporte', args=['DIARIO']))
+
+        self.assertEqual(response.status_code, 302)
+        self.assertIn('/admin/login/', response.url)
+
+    def test_tipo_invalido_da_404(self):
+        from django.contrib.auth.models import User
+        from django.urls import reverse
+
+        user = User.objects.create_user(username='gerente', password='clave12345', is_staff=True)
+        self.client.force_login(user)
+
+        response = self.client.post(reverse('enviar_reporte', args=['NO_EXISTE']))
+
+        self.assertEqual(response.status_code, 404)
+
+    def test_envio_manual_exitoso_muestra_mensaje_y_registra_origen(self):
+        from django.contrib.auth.models import User
+        from django.contrib.messages import get_messages
+        from django.urls import reverse
+        from attendance.models import (
+            ConfiguracionSistema, ConfiguracionReporte, DestinatarioReporte,
+            Empleado, TipoReporte, OrigenEnvio, EnvioReporte
+        )
+
+        ConfiguracionSistema.objects.create(
+            hora_entrada='09:00:00', minutos_tolerancia=15,
+            email_gerente='gerente@example.com', ruta_red_reportes=''
+        )
+        config_reporte = ConfiguracionReporte.objects.get(tipo=TipoReporte.DIARIO)
+        DestinatarioReporte.objects.create(configuracion=config_reporte, email='destino@example.com', activo=True)
+
+        empleado_user = User.objects.create_user(
+            username='empleado_envio_manual', first_name='Test', last_name='Empleado'
+        )
+        Empleado.objects.create(user=empleado_user, codigo_empleado='EMPENVIOMANUAL', activo=True)
+
+        user = User.objects.create_user(username='gerente2', password='clave12345', is_staff=True)
+        self.client.force_login(user)
+
+        response = self.client.post(reverse('enviar_reporte', args=['DIARIO']))
+
+        self.assertEqual(response.status_code, 302)
+        mensajes = [str(m) for m in get_messages(response.wsgi_request)]
+        self.assertTrue(any('enviado a' in m for m in mensajes), mensajes)
+        envio = EnvioReporte.objects.filter(tipo=TipoReporte.DIARIO, origen=OrigenEnvio.MANUAL).first()
+        self.assertIsNotNone(envio)
+        self.assertTrue(envio.exitoso)
+        self.assertEqual(envio.enviado_por, user)

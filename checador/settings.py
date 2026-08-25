@@ -181,6 +181,9 @@ else:
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
+# Autenticación: no hay login propio en la app, se usa el del admin de Django
+LOGIN_URL = '/admin/login/'
+
 # Configuración de email (ejemplo con Gmail)
 EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
 EMAIL_HOST = 'smtp.sendgrid.net'
