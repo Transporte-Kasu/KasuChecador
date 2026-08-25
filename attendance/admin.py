@@ -1,4 +1,5 @@
 from django.contrib import admin
+from django.contrib import messages
 from django.utils.html import format_html
 from django.utils import timezone
 from django import forms
@@ -7,7 +8,12 @@ from .models import (
     Visitante, RegistroVisita, ConfiguracionSistema, TipoHorario,
     HorarioDiaSemana, TurnoRotativo, AsignacionTurnoRotativo,
     TipoPermiso, SolicitudPermiso, PeriodoVacacional, SaldoVacaciones,
-    SolicitudVacaciones, TipoJustificante, Justificante, AsignacionTurnoDiaria
+    SolicitudVacaciones, TipoJustificante, Justificante, AsignacionTurnoDiaria,
+    ConfiguracionReporte, DestinatarioReporte, EnvioReporte, TipoReporte, OrigenEnvio
+)
+from .utils import (
+    generar_reporte_diario, generar_reporte_semanal, generar_reporte_quincenal,
+    generar_reporte_mensual, generar_reporte_tiempo_extra_mensual, dia_quincena_actual
 )
 
 @admin.register(Departamento)
@@ -480,3 +486,67 @@ class JustificanteAdmin(admin.ModelAdmin):
         )
         self.message_user(request, f'{count} justificante(s) rechazado(s)')
     rechazar_justificantes.short_description = 'Rechazar justificantes seleccionados'
+
+# ========== ADMIN PARA ENVÍO DE REPORTES ==========
+
+def _despachar_envio_reporte(tipo, origen, enviado_por):
+    """Ejecuta la función de generación/envío correspondiente al tipo de reporte"""
+    if tipo == TipoReporte.DIARIO:
+        return generar_reporte_diario(origen=origen, enviado_por=enviado_por)
+    elif tipo == TipoReporte.SEMANAL:
+        return generar_reporte_semanal(origen=origen, enviado_por=enviado_por)
+    elif tipo == TipoReporte.QUINCENAL:
+        return generar_reporte_quincenal(dia_quincena_actual(), origen=origen, enviado_por=enviado_por)
+    elif tipo == TipoReporte.MENSUAL:
+        return generar_reporte_mensual(origen=origen, enviado_por=enviado_por)
+    return generar_reporte_tiempo_extra_mensual(origen=origen, enviado_por=enviado_por)
+
+
+class DestinatarioReporteInline(admin.TabularInline):
+    model = DestinatarioReporte
+    extra = 1
+    fields = ['email', 'nombre', 'activo']
+
+
+@admin.register(ConfiguracionReporte)
+class ConfiguracionReporteAdmin(admin.ModelAdmin):
+    list_display = ['get_tipo_display', 'activo', 'total_destinatarios_activos']
+    list_filter = ['activo']
+    inlines = [DestinatarioReporteInline]
+    actions = ['enviar_reporte_ahora']
+
+    def total_destinatarios_activos(self, obj):
+        return obj.destinatarios.filter(activo=True).count()
+    total_destinatarios_activos.short_description = 'Destinatarios activos'
+
+    def enviar_reporte_ahora(self, request, queryset):
+        for config in queryset:
+            resultado = _despachar_envio_reporte(config.tipo, OrigenEnvio.MANUAL, request.user)
+            if resultado.exitoso:
+                self.message_user(
+                    request,
+                    f'{config.get_tipo_display()}: enviado a {resultado.destinatarios}',
+                    messages.SUCCESS
+                )
+            else:
+                self.message_user(
+                    request,
+                    f'{config.get_tipo_display()}: {resultado.error}',
+                    messages.ERROR
+                )
+    enviar_reporte_ahora.short_description = 'Enviar reporte ahora a los destinatarios configurados'
+
+
+@admin.register(EnvioReporte)
+class EnvioReporteAdmin(admin.ModelAdmin):
+    list_display = ['tipo', 'fecha_hora', 'periodo_descripcion', 'origen', 'exitoso', 'enviado_por']
+    list_filter = ['tipo', 'origen', 'exitoso']
+    search_fields = ['destinatarios', 'error']
+    date_hierarchy = 'fecha_hora'
+    readonly_fields = ['tipo', 'fecha_hora', 'periodo_descripcion', 'destinatarios', 'origen', 'enviado_por', 'exitoso', 'error']
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False

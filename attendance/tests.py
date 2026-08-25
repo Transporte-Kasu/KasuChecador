@@ -362,3 +362,41 @@ class EnviarReporteViewTest(TestCase):
         self.assertIsNotNone(envio)
         self.assertTrue(envio.exitoso)
         self.assertEqual(envio.enviado_por, user)
+
+
+class ConfiguracionReporteAdminActionTest(TestCase):
+    def test_accion_enviar_reporte_ahora_registra_envio_manual(self):
+        from django.contrib.auth.models import User
+        from django.urls import reverse
+        from attendance.models import (
+            ConfiguracionSistema, ConfiguracionReporte, DestinatarioReporte,
+            Empleado, TipoReporte, OrigenEnvio, EnvioReporte
+        )
+
+        ConfiguracionSistema.objects.create(
+            hora_entrada='09:00:00', minutos_tolerancia=15,
+            email_gerente='gerente@example.com', ruta_red_reportes=''
+        )
+        config_reporte = ConfiguracionReporte.objects.get(tipo=TipoReporte.DIARIO)
+        DestinatarioReporte.objects.create(configuracion=config_reporte, email='destino@example.com', activo=True)
+
+        empleado_user = User.objects.create_user(
+            username='empleado_admin_accion', first_name='Test', last_name='Empleado'
+        )
+        Empleado.objects.create(user=empleado_user, codigo_empleado='EMPADMINACCION', activo=True)
+
+        admin_user = User.objects.create_superuser(
+            username='admin1', email='admin1@example.com', password='clave12345'
+        )
+        self.client.force_login(admin_user)
+
+        changelist_url = reverse('admin:attendance_configuracionreporte_changelist')
+        response = self.client.post(changelist_url, {
+            'action': 'enviar_reporte_ahora',
+            '_selected_action': [str(config_reporte.pk)],
+        }, follow=True)
+
+        self.assertEqual(response.status_code, 200)
+        envio = EnvioReporte.objects.filter(tipo=TipoReporte.DIARIO, origen=OrigenEnvio.MANUAL).first()
+        self.assertIsNotNone(envio)
+        self.assertTrue(envio.exitoso)
