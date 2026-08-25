@@ -5,7 +5,7 @@ from datetime import datetime, timedelta, date
 from .models import (
     Asistencia, TipoMovimiento, Empleado, ConfiguracionSistema, TiempoExtra, TipoHorario,
     HorarioDiaSemana, AsignacionTurnoRotativo, TipoSistemaHorario,
-    ConfiguracionReporte, DestinatarioReporte, EnvioReporte, TipoReporte, OrigenEnvio
+    ConfiguracionReporte, EnvioReporte, TipoReporte, OrigenEnvio
 )
 import os
 from django.conf import settings
@@ -281,13 +281,6 @@ def generar_reporte_semanal(origen=OrigenEnvio.AUTOMATICO, enviado_por=None):
     fecha_fin = hoy
     periodo_descripcion = f"{fecha_inicio.strftime('%d/%m/%Y')} - {fecha_fin.strftime('%d/%m/%Y')}"
 
-    config = ConfiguracionSistema.objects.first()
-    if not config:
-        return registrar_envio_reporte(
-            TipoReporte.SEMANAL, periodo_descripcion, [], origen,
-            enviado_por=enviado_por, exitoso=False, error='No se encontró configuración del sistema'
-        )
-
     destinatarios = obtener_destinatarios_reporte(TipoReporte.SEMANAL)
     if not destinatarios:
         return registrar_envio_reporte(
@@ -434,13 +427,6 @@ def generar_reporte_diario(origen=OrigenEnvio.AUTOMATICO, enviado_por=None):
     """Genera y envía el reporte diario después de las 12:00 PM"""
     hoy = timezone.now().date()
     periodo_descripcion = hoy.strftime('%d/%m/%Y')
-
-    config = ConfiguracionSistema.objects.first()
-    if not config:
-        return registrar_envio_reporte(
-            TipoReporte.DIARIO, periodo_descripcion, [], origen,
-            enviado_por=enviado_por, exitoso=False, error='No se encontró configuración del sistema'
-        )
 
     destinatarios = obtener_destinatarios_reporte(TipoReporte.DIARIO)
     if not destinatarios:
@@ -595,13 +581,6 @@ def generar_reporte_quincenal(dia, origen=OrigenEnvio.AUTOMATICO, enviado_por=No
         periodo = "Segunda Quincena"
 
     periodo_descripcion = f"{periodo} - {fecha_inicio.strftime('%d/%m/%Y')} a {fecha_fin.strftime('%d/%m/%Y')}"
-
-    config = ConfiguracionSistema.objects.first()
-    if not config:
-        return registrar_envio_reporte(
-            TipoReporte.QUINCENAL, periodo_descripcion, [], origen,
-            enviado_por=enviado_por, exitoso=False, error='No se encontró configuración del sistema'
-        )
 
     destinatarios = obtener_destinatarios_reporte(TipoReporte.QUINCENAL)
     if not destinatarios:
