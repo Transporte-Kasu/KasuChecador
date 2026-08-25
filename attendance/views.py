@@ -11,7 +11,8 @@ from .models import (
     Empleado, Asistencia, TipoMovimiento, Visitante,
     RegistroVisita, TiempoExtra, ConfiguracionSistema,
     SolicitudPermiso, SolicitudVacaciones, EstadoSolicitud, TipoAusencia,
-    AsignacionTurnoDiaria, TurnoRotativo, TipoReporte, OrigenEnvio
+    AsignacionTurnoDiaria, TurnoRotativo, TipoReporte, OrigenEnvio,
+    ConfiguracionReporte, EnvioReporte
 )
 from .forms import VisitanteForm, CheckInForm
 from .utils import (
@@ -370,6 +371,20 @@ def dashboard_view(request):
                 'retardos': retardos
             })
 
+    reportes_info = []
+    for tipo_valor, tipo_label in TipoReporte.choices:
+        config_reporte = ConfiguracionReporte.objects.filter(tipo=tipo_valor).first()
+        destinatarios_count = (
+            config_reporte.destinatarios.filter(activo=True).count() if config_reporte else 0
+        )
+        ultimo_envio = EnvioReporte.objects.filter(tipo=tipo_valor).first()
+        reportes_info.append({
+            'tipo': tipo_valor,
+            'label': tipo_label,
+            'destinatarios_count': destinatarios_count,
+            'ultimo_envio': ultimo_envio,
+        })
+
     context = {
         'total_empleados': total_empleados,
         'llegaron_hoy': llegaron_hoy,
@@ -377,6 +392,7 @@ def dashboard_view(request):
         'empleados_retardos': empleados_retardos,
         'fecha': hoy,
         'active_nav': 'dashboard',
+        'reportes_info': reportes_info,
     }
 
     return render(request, 'attendance/dashboard.html', context)

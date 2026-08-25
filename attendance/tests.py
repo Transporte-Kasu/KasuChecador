@@ -400,3 +400,29 @@ class ConfiguracionReporteAdminActionTest(TestCase):
         envio = EnvioReporte.objects.filter(tipo=TipoReporte.DIARIO, origen=OrigenEnvio.MANUAL).first()
         self.assertIsNotNone(envio)
         self.assertTrue(envio.exitoso)
+
+
+class DashboardReportesContextTest(TestCase):
+    def test_dashboard_incluye_info_de_reportes(self):
+        from django.contrib.auth.models import User
+        from django.urls import reverse
+        from attendance.models import ConfiguracionReporte, DestinatarioReporte, TipoReporte
+
+        config_reporte = ConfiguracionReporte.objects.get(tipo=TipoReporte.SEMANAL)
+        # La migración 0007 ya precarga destinatarios activos para SEMANAL
+        # (email del gerente y el correo adicional hardcodeado); se toma el
+        # conteo previo como base en vez de asumir que parte de cero.
+        destinatarios_previos = config_reporte.destinatarios.filter(activo=True).count()
+        DestinatarioReporte.objects.create(configuracion=config_reporte, email='a@example.com', activo=True)
+
+        user = User.objects.create_user(username='gerente3', password='clave12345', is_staff=True)
+        self.client.force_login(user)
+
+        response = self.client.get(reverse('dashboard'))
+
+        self.assertEqual(response.status_code, 200)
+        reportes_info = response.context['reportes_info']
+        self.assertEqual(len(reportes_info), 5)
+        semanal_info = next(r for r in reportes_info if r['tipo'] == TipoReporte.SEMANAL)
+        self.assertEqual(semanal_info['destinatarios_count'], destinatarios_previos + 1)
+        self.assertContains(response, 'Enviar ahora')
