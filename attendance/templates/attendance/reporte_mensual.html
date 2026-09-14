@@ -36,7 +36,7 @@
                     <label class="block text-gray-700 text-sm font-bold mb-2">Año</label>
                     <select name="anio" class="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent">
                         {% for y in years_disponibles %}
-                        <option value="{{ y }}" {% if anio|stringformat:"i" == y %}selected{% endif %}>{{ y }}</option>
+                        <option value="{{ y }}" {% if anio == y %}selected{% endif %}>{{ y }}</option>
                         {% endfor %}
                     </select>
                 </div>
@@ -116,10 +116,7 @@
                                 Retardos
                             </th>
                             <th class="px-6 py-4 text-center text-xs font-bold text-gray-700 uppercase tracking-wider">
-                                Min. Retardo
-                            </th>
-                            <th class="px-6 py-4 text-center text-xs font-bold text-gray-700 uppercase tracking-wider">
-                                Puntualidad
+                                Faltas
                             </th>
                         </tr>
                     </thead>
@@ -162,51 +159,21 @@
                                 </span>
                                 {% endif %}
                             </td>
-                            <td class="px-6 py-4 whitespace-nowrap text-center text-sm text-gray-600">
-                                {{ emp_data.total_minutos_retardo }} min
-                            </td>
                             <td class="px-6 py-4 whitespace-nowrap text-center">
-                                {% if emp_data.total_dias > 0 %}
-                                    {% widthratio emp_data.total_dias emp_data.retardos -100 as puntualidad %}
-                                    {% if emp_data.retardos == 0 %}
-                                        <span class="px-3 py-1 inline-flex text-sm leading-5 font-semibold rounded-full bg-green-100 text-green-800">
-                                            100%
-                                        </span>
-                                    {% else %}
-                                        {% widthratio emp_data.retardos emp_data.total_dias 100 as porcentaje_retardos %}
-                                        {% with puntualidad=100|add:porcentaje_retardos|add:"-200" %}
-                                        <span class="px-3 py-1 inline-flex text-sm leading-5 font-semibold rounded-full {% if puntualidad >= 95 %}bg-green-100 text-green-800{% elif puntualidad >= 80 %}bg-yellow-100 text-yellow-800{% else %}bg-red-100 text-red-800{% endif %}">
-                                            {% widthratio emp_data.total_dias emp_data.retardos -100 %}{{ puntualidad|floatformat:0 }}%
-                                        </span>
-                                        {% endwith %}
-                                    {% endif %}
+                                {% if emp_data.faltas > 0 %}
+                                <span class="px-3 py-1 inline-flex text-sm leading-5 font-semibold rounded-full bg-red-100 text-red-800">
+                                    {{ emp_data.faltas }}
+                                </span>
                                 {% else %}
-                                <span class="text-gray-400">N/A</span>
+                                <span class="px-3 py-1 inline-flex text-sm leading-5 font-semibold rounded-full bg-green-100 text-green-800">
+                                    0
+                                </span>
                                 {% endif %}
                             </td>
                         </tr>
                         {% endfor %}
                     </tbody>
                 </table>
-            </div>
-
-            <!-- Leyenda -->
-            <div class="p-6 bg-gray-50 border-t border-gray-200">
-                <h3 class="text-sm font-bold text-gray-700 mb-3">Leyenda de Puntualidad:</h3>
-                <div class="flex flex-wrap gap-4 text-sm">
-                    <div class="flex items-center">
-                        <span class="px-2 py-1 rounded-full bg-green-100 text-green-800 mr-2">●</span>
-                        <span class="text-gray-600">95% - 100%: Excelente</span>
-                    </div>
-                    <div class="flex items-center">
-                        <span class="px-2 py-1 rounded-full bg-yellow-100 text-yellow-800 mr-2">●</span>
-                        <span class="text-gray-600">80% - 94%: Bueno</span>
-                    </div>
-                    <div class="flex items-center">
-                        <span class="px-2 py-1 rounded-full bg-red-100 text-red-800 mr-2">●</span>
-                        <span class="text-gray-600">Menos de 80%: Requiere atención</span>
-                    </div>
-                </div>
             </div>
 
             {% else %}
@@ -232,7 +199,7 @@
                     <ul class="text-sm text-gray-600 space-y-1">
                         <li>• Los días asistidos cuentan únicamente los registros de entrada</li>
                         <li>• Se considera retardo después de 15 minutos de tolerancia</li>
-                        <li>• El porcentaje de puntualidad se calcula: (días sin retardo / días asistidos) × 100</li>
+                        <li>• Las faltas se calculan sobre los días laborales esperados del período, descontando permisos aprobados</li>
                         <li>• Este reporte se genera automáticamente los días 13 y 28 de cada mes</li>
                     </ul>
                 </div>

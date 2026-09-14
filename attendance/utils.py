@@ -194,7 +194,7 @@ def registrar_envio_reporte(tipo, periodo_descripcion, destinatarios, origen, en
 
 def dia_quincena_actual():
     """Devuelve 13 o 28 según qué quincena está en curso hoy"""
-    hoy = timezone.now().date()
+    hoy = timezone.localdate()
     return 13 if hoy.day <= 13 else 28
 
 def enviar_email_visitante(visitante):
@@ -274,7 +274,7 @@ def enviar_email_visitante(visitante):
 
 def generar_reporte_semanal(origen=OrigenEnvio.AUTOMATICO, enviado_por=None):
     """Genera y envía el reporte semanal todos los jueves"""
-    hoy = timezone.now().date()
+    hoy = timezone.localdate()
 
     dias_desde_lunes = hoy.weekday()
     fecha_inicio = hoy - timedelta(days=dias_desde_lunes)
@@ -425,7 +425,7 @@ def generar_reporte_semanal(origen=OrigenEnvio.AUTOMATICO, enviado_por=None):
 
 def generar_reporte_diario(origen=OrigenEnvio.AUTOMATICO, enviado_por=None):
     """Genera y envía el reporte diario después de las 12:00 PM"""
-    hoy = timezone.now().date()
+    hoy = timezone.localdate()
     periodo_descripcion = hoy.strftime('%d/%m/%Y')
 
     destinatarios = obtener_destinatarios_reporte(TipoReporte.DIARIO)
@@ -566,7 +566,7 @@ def generar_reporte_diario(origen=OrigenEnvio.AUTOMATICO, enviado_por=None):
 
 def generar_reporte_quincenal(dia, origen=OrigenEnvio.AUTOMATICO, enviado_por=None):
     """Genera el reporte quincenal (días 13 y 28)"""
-    hoy = timezone.now().date()
+    hoy = timezone.localdate()
 
     if dia == 13:
         fecha_inicio = hoy.replace(day=1)
@@ -817,7 +817,7 @@ def generar_reporte_tiempo_extra_mensual(origen=OrigenEnvio.AUTOMATICO, enviado_
 
 def generar_reporte_mensual(mes=None, anio=None, origen=OrigenEnvio.AUTOMATICO, enviado_por=None):
     """Genera el reporte mensual de asistencias en Excel, lo guarda en red si aplica y lo envía por email"""
-    hoy = timezone.now().date()
+    hoy = timezone.localdate()
 
     if mes is None:
         primer_dia_mes_actual = hoy.replace(day=1)
@@ -1010,6 +1010,42 @@ def generar_excel_reporte_semanal(fecha_inicio, fecha_fin):
     buffer.seek(0)
     return buffer
 
+def calcular_faltas_empleado(empleado, mes, anio, dias_asistidos):
+    """
+    Calcula las faltas de un empleado en un mes: días laborales esperados
+    menos días asistidos y menos permisos aprobados.
+    """
+    from .models import SolicitudPermiso, EstadoSolicitud
+    from calendar import monthrange
+
+    dias_mes = monthrange(anio, mes)[1]
+    fecha_inicio_mes = date(anio, mes, 1)
+    fecha_fin_mes = date(anio, mes, dias_mes)
+
+    permisos_dias = SolicitudPermiso.objects.filter(
+        empleado=empleado,
+        fecha_inicio__lte=fecha_fin_mes,
+        fecha_fin__gte=fecha_inicio_mes,
+        estado__in=[EstadoSolicitud.APROBADO_JEFE, EstadoSolicitud.APROBADO_GERENCIA]
+    ).count()
+
+    horario = obtener_horario_esperado(empleado, fecha_inicio_mes)
+    if horario['tipo_sistema'] == 'TURNO_24H':
+        # Turnos 24h: aproximadamente 15 turnos al mes
+        dias_esperados = 15
+    else:
+        # Contar días laborales (lunes a viernes por defecto)
+        dias_esperados = 0
+        fecha_temp = fecha_inicio_mes
+        while fecha_temp <= fecha_fin_mes:
+            if fecha_temp.weekday() < 5:  # Lunes a viernes
+                dias_esperados += 1
+            fecha_temp += timedelta(days=1)
+
+    faltas = dias_esperados - dias_asistidos - permisos_dias
+    return max(faltas, 0), permisos_dias
+
+
 def generar_excel_reporte_mensual(mes, anio):
     """
     Genera un archivo Excel detallado del reporte mensual.
@@ -1088,33 +1124,9 @@ def generar_excel_reporte_mensual(mes, anio):
         dias_asistidos = asistencias.values('fecha').distinct().count()
         retardos = asistencias.filter(retardo=True).count()
         total_min_retardo = sum(asistencias.filter(retardo=True).values_list('minutos_retardo', flat=True))
-        
-        # Contar permisos aprobados
-        permisos_dias = SolicitudPermiso.objects.filter(
-            empleado=empleado,
-            fecha_inicio__lte=fecha_fin_mes,
-            fecha_fin__gte=fecha_inicio_mes,
-            estado__in=[EstadoSolicitud.APROBADO_JEFE, EstadoSolicitud.APROBADO_GERENCIA]
-        ).count()
-        
-        # Calcular días laborales esperados
-        horario = obtener_horario_esperado(empleado, fecha_inicio_mes)
-        if horario['tipo_sistema'] == 'TURNO_24H':
-            # Turnos 24h: aproximadamente 15 turnos al mes
-            dias_esperados = 15
-        else:
-            # Contar días laborales (lunes a viernes por defecto)
-            dias_esperados = 0
-            fecha_temp = fecha_inicio_mes
-            while fecha_temp <= fecha_fin_mes:
-                if fecha_temp.weekday() < 5:  # Lunes a viernes
-                    dias_esperados += 1
-                fecha_temp += timedelta(days=1)
-        
-        faltas = dias_esperados - dias_asistidos - permisos_dias
-        if faltas < 0:
-            faltas = 0
-        
+
+        faltas, permisos_dias = calcular_faltas_empleado(empleado, mes, anio, dias_asistidos)
+
         ws_resumen.cell(row=row_resumen, column=1, value=empleado.user.get_full_name())
         ws_resumen.cell(row=row_resumen, column=2, value=empleado.codigo_empleado)
         ws_resumen.cell(row=row_resumen, column=3, value=empleado.departamento.nombre if empleado.departamento else 'N/A')

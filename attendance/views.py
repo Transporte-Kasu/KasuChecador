@@ -126,9 +126,9 @@ def checkin_view_tablet(request):
 
 def procesar_checkin_empleado(request, empleado, redirect_to='checkin'):
     """Procesa el check-in de un empleado"""
-    hoy = timezone.now().date()
-    ahora = timezone.now().time()
-    
+    hoy = timezone.localdate()
+    ahora = timezone.localtime().time()
+
     # === VALIDAR PERMISOS Y VACACIONES ===
     
     # Verificar si tiene vacaciones aprobadas para hoy
@@ -340,7 +340,7 @@ def visitante_exito(request):
 @login_required
 def dashboard_view(request):
     """Dashboard con estadísticas de asistencia"""
-    hoy = timezone.now().date()
+    hoy = timezone.localdate()
 
     # Estadísticas del día
     asistencias_hoy = Asistencia.objects.filter(
@@ -401,10 +401,17 @@ def dashboard_view(request):
 @login_required
 def reporte_mensual_view(request, mes=None, anio=None):
     """Vista para consultar reportes mensuales"""
+    # El formulario de selección de período envía mes/año como query params (GET),
+    # ya que la URL sin parámetros no captura mes/anio en la ruta.
+    mes = request.GET.get('mes') or mes
+    anio = request.GET.get('anio') or anio
+    mes = int(mes) if mes else None
+    anio = int(anio) if anio else None
+
     if not mes or not anio:
-        hoy = timezone.now()
-        mes = hoy.month
-        anio = hoy.year
+        hoy = timezone.localdate()
+        mes = mes or hoy.month
+        anio = anio or hoy.year
 
     # Obtener todas las asistencias del mes
     asistencias = Asistencia.objects.filter(
@@ -431,10 +438,14 @@ def reporte_mensual_view(request, mes=None, anio=None):
                 empleados_data[emp_id]['retardos'] += 1
                 empleados_data[emp_id]['total_minutos_retardo'] += asistencia.minutos_retardo
     
-    # Convertir sets a conteo de días
+    # Convertir sets a conteo de días y calcular faltas
+    from attendance.utils import calcular_faltas_empleado
     for emp_id, data in empleados_data.items():
         data['total_dias'] = len(data['dias_unicos'])
         del data['dias_unicos']  # Eliminar el set ya que no es serializable para template
+        data['faltas'], _ = calcular_faltas_empleado(
+            data['empleado'], mes, anio, data['total_dias']
+        )
 
     # Calcular total de retardos
     total_retardos = sum(data['retardos'] for data in empleados_data.values())
@@ -459,7 +470,7 @@ def reporte_mensual_view(request, mes=None, anio=None):
         'anio': anio,
         'empleados_data': empleados_data.values(),
         'total_retardos': total_retardos,
-        'years_disponibles': range(2024, datetime.now().year + 1), # Generacion de years
+        'years_disponibles': range(2024, timezone.localdate().year + 1),
         'active_nav': 'reportes',
     }
 
@@ -482,7 +493,7 @@ def visitantes_list_view(request):
 
 def seguridad_visitantes_view(request):
     """Panel de seguridad: listado de visitantes del día con registros de entrada/salida"""
-    hoy = timezone.now().date()
+    hoy = timezone.localdate()
 
     visitantes_hoy = Visitante.objects.filter(
         fecha_visita=hoy

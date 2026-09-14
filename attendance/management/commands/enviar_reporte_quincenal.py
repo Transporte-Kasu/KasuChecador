@@ -8,7 +8,7 @@ class Command(BaseCommand):
     help = 'Envía el reporte quincenal (días 13 y 28)'
 
     def handle(self, *args, **options):
-        hoy = timezone.now().date()
+        hoy = timezone.localdate()
 
         if hoy.day != 13 and hoy.day != 28:
             self.stdout.write(self.style.WARNING(f'Hoy no es día de reporte quincenal (día {hoy.day})'))
