@@ -3,7 +3,7 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Check-In | Sistema de Asistencia</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js"></script>
@@ -62,8 +62,8 @@
         {% endif %}
 
         <!-- QR Scanner Container -->
-        <div class="flex-1 flex flex-col items-center justify-center">
-            <div class="bg-white rounded-2xl shadow-2xl p-8 max-w-3xl w-full">
+        <div class="flex-1 w-full flex flex-col lg:flex-row lg:items-start items-center justify-center gap-8 overflow-y-auto">
+            <div class="bg-white rounded-2xl shadow-2xl p-8 max-w-3xl w-full lg:flex-[3]">
                 <!-- Scanner Status -->
                 <div id="scanner-status" class="text-center mb-6">
                     <div class="pulse-animation inline-block">
@@ -79,7 +79,7 @@
 
                 <!-- Manual Input Toggle -->
                 <div class="text-center mt-6">
-                    <button onclick="toggleManualInput()" class="text-blue-600 hover:text-blue-800 underline text-lg">
+                    <button onclick="toggleManualInput()" class="text-blue-600 hover:text-blue-800 underline text-lg min-h-[48px] px-4">
                         ¿Problemas con la cámara? Ingresa el código manualmente
                     </button>
                 </div>
@@ -92,34 +92,36 @@
                             <label class="block text-gray-700 text-lg font-semibold mb-2">Código QR:</label>
                             {{ form.qr_code }}
                         </div>
-                        <button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 px-6 rounded-lg text-xl transition duration-200">
+                        <button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 px-6 rounded-lg text-xl transition duration-200 min-h-[60px]">
                             Registrar Asistencia
                         </button>
                     </form>
                 </div>
             </div>
 
-            <!-- Quick Info -->
-            <div class="mt-8 bg-blue-50 border border-blue-200 rounded-xl p-6">
-                <div class="grid grid-cols-2 gap-4 text-center">
-                    <div>
-                        <p class="text-gray-600 text-sm mb-1">Sin horario de comida</p>
-                        <p class="text-blue-800 font-semibold text-lg">1ª Checada = Entrada</p>
-                        <p class="text-blue-800 font-semibold text-lg">2ª Checada = Salida</p>
-                    </div>
-                    <div>
-                        <p class="text-gray-600 text-sm mb-1">Con horario de comida</p>
-                        <p class="text-blue-800 font-semibold text-sm">1ª = Entrada</p>
-                        <p class="text-blue-800 font-semibold text-sm">2ª = Salida comida</p>
-                        <p class="text-blue-800 font-semibold text-sm">3ª = Entrada comida</p>
-                        <p class="text-blue-800 font-semibold text-sm">4ª = Salida</p>
+            <div class="flex flex-col gap-6 w-full max-w-3xl lg:max-w-none lg:flex-[2]">
+                <!-- Quick Info -->
+                <div class="bg-blue-50 border border-blue-200 rounded-xl p-6">
+                    <div class="grid grid-cols-2 gap-4 text-center">
+                        <div>
+                            <p class="text-gray-600 text-sm mb-1">Sin horario de comida</p>
+                            <p class="text-blue-800 font-semibold text-lg">1ª Checada = Entrada</p>
+                            <p class="text-blue-800 font-semibold text-lg">2ª Checada = Salida</p>
+                        </div>
+                        <div>
+                            <p class="text-gray-600 text-sm mb-1">Con horario de comida</p>
+                            <p class="text-blue-800 font-semibold text-sm">1ª = Entrada</p>
+                            <p class="text-blue-800 font-semibold text-sm">2ª = Salida comida</p>
+                            <p class="text-blue-800 font-semibold text-sm">3ª = Entrada comida</p>
+                            <p class="text-blue-800 font-semibold text-sm">4ª = Salida</p>
+                        </div>
                     </div>
                 </div>
-            </div>
 
-            <!-- Instructions -->
-            <div class="mt-6 text-center text-gray-600">
-                <p class="text-lg">📱 Visitantes: <a href="{% url 'visitante_registro' %}" class="text-blue-600 hover:text-blue-800 underline font-semibold">Registra tu visita aquí</a></p>
+                <!-- Instructions -->
+                <div class="text-center lg:text-left text-gray-600">
+                    <p class="text-lg">📱 Visitantes: <a href="{% url 'visitante_registro' %}" class="text-blue-600 hover:text-blue-800 underline font-semibold">Registra tu visita aquí</a></p>
+                </div>
             </div>
         </div>
     </div>
@@ -260,7 +262,7 @@
 
             const config = {
                 fps: 10,
-                qrbox: { width: 250, height: 250 },
+                qrbox: { width: 300, height: 300 },
                 aspectRatio: 1.0,
                 supportedScanTypes: [Html5QrcodeScanType.SCAN_TYPE_CAMERA]
             };
@@ -364,8 +366,26 @@
                 // Si no tiene permisos, showCameraError ya fue llamado en requestCameraPermission
             });
         }
+        // Kiosk tablet: keep screen awake while checador is displayed
+        let wakeLock = null;
+        async function requestWakeLock() {
+            try {
+                if ('wakeLock' in navigator) {
+                    wakeLock = await navigator.wakeLock.request('screen');
+                }
+            } catch (err) {
+                console.error('Wake Lock error:', err);
+            }
+        }
+        document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState === 'visible') {
+                requestWakeLock();
+            }
+        });
+
         // Initialize scanner on page load
         window.addEventListener('load', () => {
+            requestWakeLock();
             if (checkCameraSupport()) {
                 startScanner();
             }
