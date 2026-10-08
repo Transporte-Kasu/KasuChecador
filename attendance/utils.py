@@ -9,6 +9,7 @@ from .models import (
 )
 import os
 from django.conf import settings
+from django_apscheduler.util import close_old_connections, retry_on_db_operational_error
 
 def obtener_horario_esperado(empleado, fecha):
     """
@@ -164,6 +165,7 @@ def obtener_horario_esperado(empleado, fecha):
         }
 
 
+@retry_on_db_operational_error
 def obtener_destinatarios_reporte(tipo):
     """Devuelve la lista de emails activos configurados para un tipo de reporte"""
     try:
@@ -179,6 +181,7 @@ def obtener_destinatarios_reporte(tipo):
     )
 
 
+@retry_on_db_operational_error
 def registrar_envio_reporte(tipo, periodo_descripcion, destinatarios, origen, enviado_por=None, exitoso=True, error=''):
     """Crea el registro de auditoría de un envío de reporte"""
     return EnvioReporte.objects.create(
