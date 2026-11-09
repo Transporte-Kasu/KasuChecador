@@ -94,7 +94,7 @@ DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.mysql",
         "NAME": env.str('DATABASE', default='db'),
-        "USER": env.str('USERNAME', default='user'),
+        "USER": env.str('DB_USER', default='user'),
         "PASSWORD": env.str('PASSWORD', default='pass'),
         "HOST": env.str('HOST', default='localhost'),
         "PORT": env.str('DB_PORT', default='25060'),  # Puerto específico de MySQL
